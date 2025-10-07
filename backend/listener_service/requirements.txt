@@ -5,7 +5,7 @@ pyaudio
 numpy
 psycopg2-binary
 sqlalchemy
-whisper
+openai-whisper
 pyannote.audio
 torch
 torchaudio
