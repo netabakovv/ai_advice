@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+pyaudio
+numpy
+psycopg2-binary
+sqlalchemy
+whisper
+pyannote.audio
+torch
+torchaudio
+transformers
+PyYAML
