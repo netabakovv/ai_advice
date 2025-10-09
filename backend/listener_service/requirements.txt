@@ -11,3 +11,4 @@ torch
 torchaudio
 transformers
 PyYAML
+python-multipart
