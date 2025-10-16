@@ -1,9 +1,9 @@
 import { ChevronDown } from "lucide-react";
-import { MetricsCards } from "./MetricsCards";
-import { DurationChart } from "./DurationChart";
-import { TimeAnalytics } from "./TimeAnalytics";
-import { EmployeeTable } from "./EmployeeTable";
-import { OptimizationChart } from "./OptimizationChart";
+import { MetricsCards } from "../components/MetricsCards";
+import { DurationChart } from "../components/DurationChart";
+import { TimeAnalytics } from "../components/TimeAnalytics";
+import { EmployeeTable } from "../components/EmployeeTable";
+import { OptimizationChart } from "../components/OptimizationChart";
 
 export function DashboardPage() {
   return (

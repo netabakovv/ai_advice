@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Sidebar } from "./components/Sidebar";
-import { HomePage } from "./components/HomePage";
-import { DashboardPage } from "./components/DashboardPage";
-import { TipsPage } from "./components/TipsPage";
-import { MeetingDetailsPage } from "./components/MeetingDetailsPage";
+import { HomePage } from "./pages/HomePage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { TipsPage } from "./pages/TipsPage";
+import { MeetingDetailsPage } from "./pages/MeetingDetailsPage";
+import {CalendarPage} from "./pages/CalendarPage";
 
 export default function App() {
   const [activePage, setActivePage] = useState("home");
@@ -26,6 +27,8 @@ export default function App() {
         return <DashboardPage />;
       case "tips":
         return <TipsPage onShowMeetingDetails={() => setShowMeetingDetails(true)} />;
+      case "calendar":
+        return <CalendarPage />;
       default:
         return <HomePage />;
     }

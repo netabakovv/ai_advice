@@ -1,6 +1,7 @@
 import { Paperclip, Video, Users, Globe } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import {Footer} from "../components/Footer";
 
 export function HomePage() {
   return (
@@ -39,26 +40,21 @@ export function HomePage() {
           </div>
           
           {/* Supported Services */}
-          <div className="bg-white rounded-2xl p-6">
-            <p className="text-sm text-gray-600 text-center mb-4">Поддерживаем</p>
-            <div className="flex items-center justify-center gap-8">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
-                  <Video className="w-4 h-4 text-white" />
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+            <div className="text-center">
+              <p className="text-sm text-gray-600 mb-2">Поддерживаемые платформы</p>
+              <p className="text-lg font-medium text-gray-800">Все популярные сервисы видеосвязи</p>
+              <div className="flex items-center justify-center gap-2 mt-3">
+                <div className="w-6 h-6 bg-blue-500 rounded-md flex items-center justify-center">
+                  <Video className="w-3 h-3 text-white" />
                 </div>
-                <span className="text-sm text-gray-700">Zoom</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center">
-                  <Users className="w-4 h-4 text-white" />
+                <div className="w-6 h-6 bg-green-500 rounded-md flex items-center justify-center">
+                  <Users className="w-3 h-3 text-white" />
                 </div>
-                <span className="text-sm text-gray-700">Google Meet</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
-                  <Globe className="w-4 h-4 text-white" />
+                <div className="w-6 h-6 bg-red-500 rounded-md flex items-center justify-center">
+                  <Globe className="w-3 h-3 text-white" />
                 </div>
-                <span className="text-sm text-gray-700">Яндекс Телемост</span>
+                <span className="text-sm text-gray-500">и многие другие</span>
               </div>
             </div>
           </div>
@@ -69,27 +65,8 @@ export function HomePage() {
       <div className="absolute top-20 left-20 w-32 h-32 bg-gradient-to-br from-[#4A6CF7]/10 to-[#C56CF0]/10 rounded-full blur-3xl"></div>
       <div className="absolute top-40 right-32 w-24 h-24 bg-gradient-to-br from-[#FFA94D]/10 to-[#FF8A65]/10 rounded-full blur-2xl"></div>
       <div className="absolute bottom-32 left-32 w-40 h-40 bg-gradient-to-br from-[#C56CF0]/10 to-[#4A6CF7]/10 rounded-full blur-3xl"></div>
-      
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 px-8 py-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            Timeflow — оптимизация времени встреч с помощью ИИ
-          </div>
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-              О проекте
-            </a>
-            <a href="#" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-              Конфиденциальность
-            </a>
-            <a href="#" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-              Поддержка
-            </a>
-            <div className="text-sm text-gray-400">© 2025</div>
-          </div>
-        </div>
-      </footer>
+
+      <Footer />
     </div>
   );
 }

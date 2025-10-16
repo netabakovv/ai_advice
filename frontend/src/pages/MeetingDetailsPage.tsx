@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, Clock, Users, BarChart3, ChevronDown, ChevronRight, AlertTriangle, Repeat, MessageCircleOff, Volume2, UserMinus } from "lucide-react";
-import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Button } from "../components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 interface MeetingDetailsPageProps {
   onBack: () => void;
