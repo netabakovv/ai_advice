@@ -7,10 +7,11 @@ import { OptimizationChart } from "../components/OptimizationChart";
 
 export function DashboardPage() {
   return (
-    <div className="flex-1 p-8">
+    <div className="flex-1 p-8 bg-gray-100">
+      <div className="max-w-[1280px] mx-auto w-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-semibold text-gray-800">Дашборды</h1>
+        <h1 className="text-3xl font-semibold text-gray-800">Аналитика</h1>
         
         {/* Date Range Selector */}
         <div className="flex items-center gap-4">
@@ -38,6 +39,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <EmployeeTable />
         <OptimizationChart />
+      </div>
       </div>
     </div>
   );
