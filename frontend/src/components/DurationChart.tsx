@@ -19,13 +19,13 @@ const data = [
 
 export function DurationChart() {
   return (
-    <div className="bg-white rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-gray-800">Динамика длительности</h3>
-        <button className="text-green-500 text-sm font-medium">Есть советы</button>
+    <div className="bg-white rounded-2xl p-4 md:p-6">
+      <div className="flex items-center justify-between mb-4 md:mb-6">
+        <h3 className="text-base md:text-lg font-semibold text-gray-800">Динамика длительности</h3>
+        <button className="text-green-500 text-xs md:text-sm font-medium">Есть советы</button>
       </div>
       
-      <div className="h-80">
+      <div className="h-64 md:h-80">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <defs>
