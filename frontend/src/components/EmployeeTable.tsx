@@ -37,47 +37,47 @@ const employees = [
 
 export function EmployeeTable() {
   return (
-    <div className="bg-white rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-gray-800">Лучшие сотрудники</h3>
+    <div className="bg-white rounded-2xl p-4 md:p-6">
+      <div className="flex items-center justify-between mb-4 md:mb-6">
+        <h3 className="text-base md:text-lg font-semibold text-gray-800">Лучшие сотрудники</h3>
         <button className="text-gray-400">
           <MoreHorizontal className="w-5 h-5" />
         </button>
       </div>
       
-      <div className="overflow-hidden">
-        <table className="w-full">
+      <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
+        <table className="w-full min-w-[600px]">
           <thead>
             <tr className="border-b border-gray-200">
-              <th className="text-left py-3 text-sm font-medium text-gray-600">Имя</th>
-              <th className="text-center py-3 text-sm font-medium text-gray-600">Лаконичность</th>
-              <th className="text-center py-3 text-sm font-medium text-gray-600">Ясность</th>
-              <th className="text-center py-3 text-sm font-medium text-gray-600">Фокус</th>
-              <th className="text-center py-3 text-sm font-medium text-gray-600">Эффективность</th>
+              <th className="text-left py-3 text-xs md:text-sm font-medium text-gray-600">Имя</th>
+              <th className="text-center py-3 text-xs md:text-sm font-medium text-gray-600">Лаконичность</th>
+              <th className="text-center py-3 text-xs md:text-sm font-medium text-gray-600">Ясность</th>
+              <th className="text-center py-3 text-xs md:text-sm font-medium text-gray-600">Фокус</th>
+              <th className="text-center py-3 text-xs md:text-sm font-medium text-gray-600">Эффективность</th>
             </tr>
           </thead>
           <tbody>
             {employees.map((employee, index) => (
               <tr key={index} className="border-b border-gray-100 last:border-b-0">
-                <td className="py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-[#4A6CF7] to-[#C56CF0] rounded-full flex items-center justify-center text-white text-sm">
+                <td className="py-3 md:py-4">
+                  <div className="flex items-center gap-2 md:gap-3">
+                    <div className="w-7 h-7 md:w-8 md:h-8 bg-gradient-to-br from-[#4A6CF7] to-[#C56CF0] rounded-full flex items-center justify-center text-white text-xs md:text-sm">
                       {employee.avatar}
                     </div>
-                    <span className="text-sm font-medium text-gray-800">{employee.name}</span>
+                    <span className="text-xs md:text-sm font-medium text-gray-800 whitespace-nowrap">{employee.name}</span>
                   </div>
                 </td>
-                <td className="text-center py-4">
-                  <span className="text-sm text-gray-700">{employee.laconic}%</span>
+                <td className="text-center py-3 md:py-4">
+                  <span className="text-xs md:text-sm text-gray-700">{employee.laconic}%</span>
                 </td>
-                <td className="text-center py-4">
-                  <span className="text-sm text-gray-700">{employee.clarity}%</span>
+                <td className="text-center py-3 md:py-4">
+                  <span className="text-xs md:text-sm text-gray-700">{employee.clarity}%</span>
                 </td>
-                <td className="text-center py-4">
-                  <span className="text-sm text-gray-700">{employee.focus}%</span>
+                <td className="text-center py-3 md:py-4">
+                  <span className="text-xs md:text-sm text-gray-700">{employee.focus}%</span>
                 </td>
-                <td className="text-center py-4">
-                  <span className="text-sm text-gray-700">{employee.efficiency}%</span>
+                <td className="text-center py-3 md:py-4">
+                  <span className="text-xs md:text-sm text-gray-700">{employee.efficiency}%</span>
                 </td>
               </tr>
             ))}

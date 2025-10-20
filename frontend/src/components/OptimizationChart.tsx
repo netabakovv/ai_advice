@@ -14,18 +14,18 @@ export function OptimizationChart() {
   const maxValue = Math.max(...monthsData.map(item => item.value));
 
   return (
-    <div className="bg-white rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-lg font-semibold text-gray-800">Средняя оптимизация по месяцам</h3>
+    <div className="bg-white rounded-2xl p-4 md:p-6">
+      <div className="flex items-center justify-between mb-4 md:mb-6">
+        <h3 className="text-base md:text-lg font-semibold text-gray-800">Средняя оптимизация по месяцам</h3>
         <button className="text-gray-400">
           <MoreHorizontal className="w-5 h-5" />
         </button>
       </div>
       
-      <div className="space-y-4">
+      <div className="space-y-3 md:space-y-4">
         {monthsData.map((item, index) => (
-          <div key={index} className="flex items-center gap-4">
-            <div className="w-8 text-sm text-gray-600 font-medium">{item.month}</div>
+          <div key={index} className="flex items-center gap-3 md:gap-4">
+            <div className="w-7 md:w-8 text-xs md:text-sm text-gray-600 font-medium">{item.month}</div>
             <div className="flex-1 flex items-center">
               <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
                 <div
@@ -36,7 +36,7 @@ export function OptimizationChart() {
                   }}
                 ></div>
               </div>
-              <div className="w-8 text-right text-sm text-gray-700 ml-3">{item.value}%</div>
+              <div className="w-7 md:w-8 text-right text-xs md:text-sm text-gray-700 ml-2 md:ml-3">{item.value}%</div>
             </div>
           </div>
         ))}

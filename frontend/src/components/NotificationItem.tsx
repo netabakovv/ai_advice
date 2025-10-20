@@ -21,6 +21,7 @@ export interface NotificationItemProps {
   linkLabel?: string;
   onMarkAsRead?: () => void;
   onClick?: () => void;
+  onAction?: () => void;
 }
 
 const getNotificationConfig = (type: NotificationType) => {
@@ -81,6 +82,7 @@ export function NotificationItem({
   linkLabel,
   onMarkAsRead,
   onClick,
+  onAction,
 }: NotificationItemProps) {
   const config = getNotificationConfig(type);
   const Icon = config.icon;
@@ -128,6 +130,7 @@ export function NotificationItem({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (onMarkAsRead) onMarkAsRead();
+                  if (onAction) onAction();
                 }}
               >
                 {linkLabel}

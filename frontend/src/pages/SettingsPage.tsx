@@ -1,11 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { SettingInput } from "../components/SettingInput";
 import { AvatarCard } from "../components/AvatarCard";
 import { SettingSwitch } from "../components/SettingSwitch";
 import { Button } from "../components/ui/button";
-import { Skeleton } from "../components/ui/skeleton";
 import { toast } from "sonner@2.0.3";
-import { Save, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Save, CheckCircle, Loader2 } from "lucide-react";
 
 // API Response Types
 interface SettingsResponse {
@@ -51,15 +50,6 @@ const mockSettingsData: SettingsResponse = {
 // Имитация API вызовов
 const mockApiDelay = () => new Promise((resolve) => setTimeout(resolve, 800));
 
-const fetchSettings = async (): Promise<SettingsResponse> => {
-  await mockApiDelay();
-  // Имитация возможной ошибки (5% chance)
-  if (Math.random() < 0.05) {
-    throw new Error("Failed to fetch settings");
-  }
-  return mockSettingsData;
-};
-
 const updateSettings = async (
   updates: SettingsUpdateRequest
 ): Promise<SettingsResponse> => {
@@ -75,7 +65,7 @@ const updateSettings = async (
   };
 };
 
-type PageState = "loading" | "default" | "saving" | "saved" | "error";
+type PageState = "default" | "saving" | "saved" | "error";
 
 // i18n mock (в реальном приложении использовать библиотеку i18n)
 const t = (key: string): string => {
@@ -97,81 +87,17 @@ const t = (key: string): string => {
     "settings.save": "Сохранить изменения",
     "settings.saving": "Сохранение...",
     "settings.saved": "Сохранено",
-    "settings.error": "Ошибка загрузки",
-    "settings.error.retry": "Повторить попытку",
     "settings.toast.saved": "Настройки успешно сохранены",
     "settings.toast.error": "Не удалось сохранить настройки",
   };
   return translations[key] || key;
 };
 
-function ProfileSkeleton() {
-  return (
-    <div className="bg-white rounded-2xl p-6 space-y-6">
-      <Skeleton className="h-6 w-32" />
-      <div className="flex items-center gap-4">
-        <Skeleton className="w-20 h-20 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-8 w-28" />
-        </div>
-      </div>
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NotificationsSkeleton() {
-  return (
-    <div className="bg-white rounded-2xl p-6 space-y-6">
-      <Skeleton className="h-6 w-32" />
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center justify-between py-3">
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-56" />
-            </div>
-            <Skeleton className="h-6 w-11 rounded-full" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function SettingsPage() {
-  const [pageState, setPageState] = useState<PageState>("loading");
-  const [settings, setSettings] = useState<SettingsResponse | null>(null);
-  const [formData, setFormData] = useState<SettingsResponse | null>(null);
+  const [pageState, setPageState] = useState<PageState>("default");
+  const [settings, setSettings] = useState<SettingsResponse>(mockSettingsData);
+  const [formData, setFormData] = useState<SettingsResponse>(mockSettingsData);
   const [hasChanges, setHasChanges] = useState(false);
-
-  // Загрузка настроек при монтировании
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    try {
-      setPageState("loading");
-      const data = await fetchSettings();
-      setSettings(data);
-      setFormData(data);
-      setPageState("default");
-    } catch (error) {
-      console.error("Failed to load settings:", error);
-      setPageState("error");
-    }
-  };
 
   const handleSave = async () => {
     if (!formData || !settings) return;
@@ -254,49 +180,6 @@ export function SettingsPage() {
     toast.info("Функция загрузки фото будет доступна в следующей версии");
   };
 
-  // Loading State
-  if (pageState === "loading") {
-    return (
-      <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
-        <div className="max-w-[1280px] mx-auto w-full space-y-8">
-          <div>
-            <Skeleton className="h-8 w-48 mb-2" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <ProfileSkeleton />
-          <NotificationsSkeleton />
-        </div>
-      </div>
-    );
-  }
-
-  // Error State
-  if (pageState === "error" && !settings) {
-    return (
-      <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
-        <div className="max-w-[1280px] mx-auto w-full">
-          <div className="bg-white rounded-2xl p-12 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <h3 className="mb-2">{t("settings.error")}</h3>
-            <p className="text-gray-600 max-w-md mx-auto mb-6">
-              Не удалось загрузить настройки. Проверьте подключение к интернету и попробуйте снова.
-            </p>
-            <Button
-              onClick={loadSettings}
-              className="bg-gradient-to-r from-[#4A6CF7] to-[#C56CF0] text-white hover:from-[#3A5CE7] hover:to-[#B55CE0] rounded-xl"
-            >
-              {t("settings.error.retry")}
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!formData || !settings) return null;
-
   // Определяем иконку и текст кнопки в зависимости от состояния
   const getSaveButtonConfig = () => {
     switch (pageState) {
@@ -324,13 +207,13 @@ export function SettingsPage() {
   const buttonConfig = getSaveButtonConfig();
 
   return (
-    <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
+    <div className="flex-1 p-4 md:p-8 bg-gray-100 overflow-y-auto pt-16 md:pt-8">
       <div className="max-w-[1280px] mx-auto w-full space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h1>{t("settings.title")}</h1>
-            <p className="text-gray-600">{t("settings.subtitle")}</p>
+            <h1 className="text-2xl md:text-3xl font-semibold text-gray-800">{t("settings.title")}</h1>
+            <p className="text-gray-600 text-sm md:text-base">{t("settings.subtitle")}</p>
           </div>
           <Button
             onClick={handleSave}
