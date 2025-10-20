@@ -1,6 +1,6 @@
 import { Clock, Users, MessageSquareOff, CheckCircle, ChevronRight, BarChart3 } from "lucide-react";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 
 interface TipsPageProps {
   onShowMeetingDetails: () => void;
@@ -74,7 +74,8 @@ export function TipsPage({ onShowMeetingDetails }: TipsPageProps) {
   const filters = ["Все встречи", "Последние", "По месяцам"];
 
   return (
-    <div className="flex-1 p-8">
+    <div className="flex-1 p-8 bg-gray-100">
+      <div className="max-w-[1280px] mx-auto w-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-semibold text-gray-800">Советы по встречам</h1>
@@ -215,6 +216,7 @@ export function TipsPage({ onShowMeetingDetails }: TipsPageProps) {
             ИИ-советы помогают сокращать время встреч на 20% и повышают эффективность
           </p>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -1,13 +1,14 @@
 import { Paperclip, Video, Users, Globe } from "lucide-react";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 
 export function HomePage() {
   return (
     <div className="flex-1 min-h-screen flex flex-col">
       {/* Main Content */}
       <div className="flex-1 flex items-center justify-center px-8 py-16">
-        <div className="max-w-2xl w-full">
+        <div className="max-w-[1280px] mx-auto w-full">
+        <div className="max-w-2xl mx-auto w-full">
           {/* Main Input Section */}
           <div className="text-center mb-12">
             <div className="relative mb-6">
@@ -63,6 +64,7 @@ export function HomePage() {
             </div>
           </div>
         </div>
+        </div>
       </div>
       
       {/* Decorative Elements */}
@@ -72,7 +74,7 @@ export function HomePage() {
       
       {/* Footer */}
       <footer className="bg-white border-t border-gray-200 px-8 py-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
+        <div className="max-w-[1280px] mx-auto w-full flex items-center justify-between">
           <div className="text-sm text-gray-600">
             Timeflow — оптимизация времени встреч с помощью ИИ
           </div>

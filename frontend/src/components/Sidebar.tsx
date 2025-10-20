@@ -1,22 +1,32 @@
-import { Home, BarChart3, Activity, Lightbulb, Calendar, Bell, Settings } from "lucide-react";
+import { useState } from "react";
+import { Home, BarChart3, Activity, Lightbulb, Calendar, Bell, Settings, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
+import { PricingModal } from "./PricingModal";
 
 interface SidebarProps {
   activePage: string;
   onPageChange: (page: string) => void;
+  onLogout?: () => void;
 }
 
-export function Sidebar({ activePage, onPageChange }: SidebarProps) {
+export function Sidebar({ activePage, onPageChange, onLogout }: SidebarProps) {
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+
   const menuItems = [
     { icon: Home, label: "Главная", key: "home" },
     { icon: BarChart3, label: "Аналитика", key: "analytics" },
-    { icon: Activity, label: "Дашборды", key: "dashboard" },
     { icon: Lightbulb, label: "Советы", key: "tips" },
     { icon: Calendar, label: "Календарь", key: "calendar" },
     { icon: Bell, label: "Уведомления", key: "notifications" },
     { icon: Settings, label: "Настройки", key: "settings" },
   ];
+
+  const handlePlanSelect = (planId: string, period: "monthly" | "yearly") => {
+    console.log(`Selected plan: ${planId}, period: ${period}`);
+    // Здесь можно добавить логику для обработки выбора тарифа
+    setIsPricingModalOpen(false);
+  };
 
   return (
     <div className="w-64 h-screen bg-white flex flex-col rounded-r-3xl">
@@ -61,14 +71,34 @@ export function Sidebar({ activePage, onPageChange }: SidebarProps) {
               <div className="text-xs text-gray-500">ivan@example.com</div>
             </div>
           </div>
-          <Button 
-            className="w-full bg-gradient-to-r from-[#FFA94D] to-[#FF8A65] text-white border-0 rounded-xl hover:from-[#FF9A3D] hover:to-[#FF7A55]"
-            size="sm"
-          >
-            Поменять тариф
-          </Button>
+          <div className="space-y-2">
+            <Button 
+              className="w-full bg-gradient-to-r from-[#FFA94D] to-[#FF8A65] text-white border-0 rounded-xl hover:from-[#FF9A3D] hover:to-[#FF7A55]"
+              size="sm"
+              onClick={() => setIsPricingModalOpen(true)}
+            >
+              Поменять тариф
+            </Button>
+            <Button 
+              variant="outline"
+              className="w-full rounded-xl"
+              size="sm"
+              onClick={onLogout}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Выйти
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Pricing Modal */}
+      <PricingModal
+        open={isPricingModalOpen}
+        onOpenChange={setIsPricingModalOpen}
+        currentPlan="basic"
+        onSelect={handlePlanSelect}
+      />
     </div>
   );
 }

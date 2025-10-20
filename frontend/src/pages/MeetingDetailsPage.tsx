@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ArrowLeft, Clock, Users, BarChart3, ChevronDown, ChevronRight, AlertTriangle, Repeat, MessageCircleOff, Volume2, UserMinus } from "lucide-react";
-import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Button } from "../components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
 interface MeetingDetailsPageProps {
   onBack: () => void;
@@ -98,7 +98,7 @@ export function MeetingDetailsPage({ onBack }: MeetingDetailsPageProps) {
 
   return (
     <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-[1280px] mx-auto w-full space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <Button
@@ -108,7 +108,7 @@ export function MeetingDetailsPage({ onBack }: MeetingDetailsPageProps) {
             className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
           >
             <ArrowLeft className="w-4 h-4" />
-            Назад к советам
+            Назад
           </Button>
           
           <Select>
