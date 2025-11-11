@@ -34,4 +34,6 @@ class Config:
     MAX_CONNECTIONS: int = 100
     CONNECTION_TIMEOUT: int = 300
 
+    EXTERNAL_CALLBACK_URL: str = os.getenv("EXTERNAL_CALLBACK_URL", "http://localhost:8001/conversation_completed")
+
 config = Config()
