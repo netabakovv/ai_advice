@@ -2,12 +2,14 @@ import asyncio
 import numpy as np
 import torch
 import hdbscan
+import aiohttp
 from sqlalchemy.orm import Session
 from resemblyzer import VoiceEncoder, preprocess_wav
 from models.database import get_db, Conversation, Phrase, Speaker, User, VoiceProfile, VoiceEmbedding
 from services.transcription import transcription_service
 from services.diarization import diarization_service
 from utils.buffer_manager import buffer_manager
+from utils.config import config
 import logging
 import uuid
 import json
@@ -356,12 +358,28 @@ class AudioProcessingService:
                 db.commit()
                 
             logger.info(f"Offline diarization completed for {conversation_id}")
+
+            await self._notify_external_service(conversation_id)
             
         except Exception as e:
             logger.error(f"Offline diarization failed for {conversation_id}: {e}")
             db.rollback()
         finally:
             db.close()
+
+    async def _notify_external_service(self, conversation_id: str):
+        url = config.EXTERNAL_CALLBACK_URL
+        payload = {"conversation_id": conversation_id}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, timeout=5) as resp:
+                    if resp.status == 200:
+                        logger.info(f"Successfully notified external service for {conversation_id}")
+                    else:
+                        logger.warning(f"External service responded with {resp.status} for {conversation_id}")
+        except Exception as e:
+            logger.error(f"Failed to notify external service for {conversation_id}: {e}")
 
     async def _load_reference_embeddings(self, db: Session) -> Dict[str, List[np.ndarray]]:
         """Загружает эталонные эмбеддинги пользователей"""
