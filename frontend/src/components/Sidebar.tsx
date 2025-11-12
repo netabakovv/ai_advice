@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, BarChart3, Activity, Lightbulb, Calendar, Bell, Settings, LogOut } from "lucide-react";
+import { Home, BarChart3, Activity, Lightbulb, Calendar, Bell, Settings, LogOut, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { PricingModal } from "./PricingModal";
@@ -8,9 +8,11 @@ interface SidebarProps {
   activePage: string;
   onPageChange: (page: string) => void;
   onLogout?: () => void;
+  isMobileMenuOpen?: boolean;
+  onCloseMobileMenu?: () => void;
 }
 
-export function Sidebar({ activePage, onPageChange, onLogout }: SidebarProps) {
+export function Sidebar({ activePage, onPageChange, onLogout, isMobileMenuOpen, onCloseMobileMenu }: SidebarProps) {
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
 
   const menuItems = [
@@ -29,7 +31,22 @@ export function Sidebar({ activePage, onPageChange, onLogout }: SidebarProps) {
   };
 
   return (
-    <div className="w-64 h-screen bg-white flex flex-col rounded-r-3xl">
+    <div 
+      className={`
+        w-64 h-screen bg-white flex flex-col rounded-r-3xl
+        fixed md:static top-0 left-0 z-50
+        transition-transform duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}
+    >
+      {/* Close button for mobile */}
+      <button
+        onClick={onCloseMobileMenu}
+        className="md:hidden absolute top-4 right-4 p-2 text-gray-600 hover:text-gray-800"
+      >
+        <X className="w-6 h-6" />
+      </button>
+
       {/* Logo */}
       <div className="p-6 flex items-center gap-3">
         <div className="w-10 h-10 bg-gradient-to-br from-[#4A6CF7] to-[#C56CF0] rounded-2xl flex items-center justify-center">

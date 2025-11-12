@@ -96,7 +96,7 @@ const mockNotifications: Notification[] = [
     id: "8",
     type: "info",
     title: "Еженедельный отчет готов",
-    message: "Ваш еженедельный отчет по эффективности встреч готов к про��мотру. Всего встреч: 12, средняя продолжительность: 28 мин, топ-3 темы: планирование, код-ревью, статусы.",
+    message: "Ваш еженедельный отчет по эффективности встреч готов к промотру. Всего встреч: 12, средняя продолжительность: 28 мин, топ-3 темы: планирование, код-ревью, статусы.",
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString(),
     source: "Отчеты",
     readAt: "2025-10-15T12:00:00Z",
@@ -222,7 +222,11 @@ function NotificationSkeleton() {
   );
 }
 
-export function NotificationsPage() {
+interface NotificationsPageProps {
+  onShowMeetingDetails?: () => void;
+}
+
+export function NotificationsPage({ onShowMeetingDetails }: NotificationsPageProps) {
   const [pageState, setPageState] = useState<"loaded" | "loading" | "empty" | "error" | "offline">("loaded");
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
 
@@ -245,10 +249,23 @@ export function NotificationsPage() {
     );
   };
 
+  // Функция для определения, должна ли кнопка открывать детали встречи
+  const shouldOpenMeetingDetails = (notification: Notification) => {
+    const label = notification.actions?.[0]?.label;
+    return label === "Посмотреть отчет" || label === "Посмотреть детали";
+  };
+
+  const handleNotificationAction = (notification: Notification) => {
+    if (shouldOpenMeetingDetails(notification) && onShowMeetingDetails) {
+      handleMarkAsRead(notification.id);
+      onShowMeetingDetails();
+    }
+  };
+
   // Loading State
   if (pageState === "loading") {
     return (
-      <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-8 bg-gray-100 overflow-y-auto pt-16 md:pt-8">
         <div className="max-w-[1280px] mx-auto w-full">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -270,7 +287,7 @@ export function NotificationsPage() {
   // Empty State
   if (pageState === "empty") {
     return (
-      <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-8 bg-gray-100 overflow-y-auto pt-16 md:pt-8">
         <div className="max-w-[1280px] mx-auto w-full">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -295,7 +312,7 @@ export function NotificationsPage() {
   // Error State
   if (pageState === "error") {
     return (
-      <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-8 bg-gray-100 overflow-y-auto pt-16 md:pt-8">
         <div className="max-w-[1280px] mx-auto w-full">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -326,12 +343,12 @@ export function NotificationsPage() {
   // Offline State
   if (pageState === "offline") {
     return (
-      <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
+      <div className="flex-1 p-4 md:p-8 bg-gray-100 overflow-y-auto pt-16 md:pt-8">
         <div className="max-w-[1280px] mx-auto w-full">
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center justify-between mb-6 md:mb-8">
             <div>
-              <h1>Уведомления</h1>
-              <p className="text-gray-600">Нет подключения к интернету</p>
+              <h1 className="text-2xl md:text-3xl">Уведомления</h1>
+              <p className="text-gray-600 text-sm md:text-base">Нет подключения к ин��ернету</p>
             </div>
           </div>
           <div className="bg-white rounded-2xl p-12 text-center">
@@ -348,7 +365,7 @@ export function NotificationsPage() {
               className="rounded-xl"
             >
               <Wifi className="w-4 h-4 mr-2" />
-              П��вторить попытку
+              Пвторить попытку
             </Button>
           </div>
         </div>
@@ -358,13 +375,13 @@ export function NotificationsPage() {
 
   // Loaded State (Main view)
   return (
-    <div className="flex-1 p-8 bg-gray-100 overflow-y-auto">
+    <div className="flex-1 p-4 md:p-8 bg-gray-100 overflow-y-auto pt-16 md:pt-8">
       <div className="max-w-[1280px] mx-auto w-full">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 md:mb-8 gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <h1>Уведомления</h1>
+              <h1 className="text-2xl md:text-3xl font-semibold text-gray-800">Уведомления</h1>
               {unreadCount > 0 && (
                 <Badge className="bg-blue-500 text-white hover:bg-blue-600 px-3 py-1">
                   {unreadCount} новых
@@ -389,50 +406,6 @@ export function NotificationsPage() {
           )}
         </div>
 
-        {/* Debug State Switcher (for testing) */}
-        <div className="mb-6 flex gap-2 flex-wrap">
-          <Button
-            size="sm"
-            variant={pageState === "loaded" ? "default" : "outline"}
-            onClick={() => setPageState("loaded")}
-            className="rounded-xl"
-          >
-            Loaded
-          </Button>
-          <Button
-            size="sm"
-            variant={pageState === "loading" ? "default" : "outline"}
-            onClick={() => setPageState("loading")}
-            className="rounded-xl"
-          >
-            Loading
-          </Button>
-          <Button
-            size="sm"
-            variant={pageState === "empty" ? "default" : "outline"}
-            onClick={() => setPageState("empty")}
-            className="rounded-xl"
-          >
-            Empty
-          </Button>
-          <Button
-            size="sm"
-            variant={pageState === "error" ? "default" : "outline"}
-            onClick={() => setPageState("error")}
-            className="rounded-xl"
-          >
-            Error
-          </Button>
-          <Button
-            size="sm"
-            variant={pageState === "offline" ? "default" : "outline"}
-            onClick={() => setPageState("offline")}
-            className="rounded-xl"
-          >
-            Offline
-          </Button>
-        </div>
-
         {/* Notifications List */}
         <div className="space-y-8">
           {/* Today */}
@@ -451,6 +424,7 @@ export function NotificationsPage() {
                     source={notification.source}
                     linkLabel={notification.actions?.[0]?.label}
                     onMarkAsRead={() => handleMarkAsRead(notification.id)}
+                    onAction={() => handleNotificationAction(notification)}
                   />
                 ))}
               </div>
@@ -473,6 +447,7 @@ export function NotificationsPage() {
                     source={notification.source}
                     linkLabel={notification.actions?.[0]?.label}
                     onMarkAsRead={() => handleMarkAsRead(notification.id)}
+                    onAction={() => handleNotificationAction(notification)}
                   />
                 ))}
               </div>
@@ -495,6 +470,7 @@ export function NotificationsPage() {
                     source={notification.source}
                     linkLabel={notification.actions?.[0]?.label}
                     onMarkAsRead={() => handleMarkAsRead(notification.id)}
+                    onAction={() => handleNotificationAction(notification)}
                   />
                 ))}
               </div>

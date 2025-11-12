@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: transcription_db
+      POSTGRES_USER: transcription_user
+      POSTGRES_PASSWORD: transcription_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - app_network
+
+  transcription_service:
+    image: transcription-service:latest
+    environment:
+      DATABASE_URL: postgresql://transcription_user:transcription_pass@postgres:5432/transcription_db
+      MEDIA_STORAGE_PATH: /app/media
+      WHISPER_MODEL_SIZE: base
+      WHISPER_DEVICE: cpu
+      WHISPER_COMPUTE_TYPE: int8
+      HUGGINGFACE_TOKEN: 
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./
+    depends_on:
+      - postgres
+    networks:
+      - app_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  app_network:
+    driver: bridge

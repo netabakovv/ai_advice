@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Menu } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { HomePage } from "./pages/HomePage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -15,10 +16,12 @@ export default function App() {
   const [activePage, setActivePage] = useState("home");
   const [showMeetingDetails, setShowMeetingDetails] =
     useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handlePageChange = (newPage: string) => {
     setActivePage(newPage);
     setShowMeetingDetails(false); // Close meeting details when navigating to a new page
+    setIsMobileMenuOpen(false); // Close mobile menu when navigating
   };
 
   const handleLogout = () => {
@@ -53,6 +56,7 @@ export default function App() {
             onShowMeetingDetails={() =>
               setShowMeetingDetails(true)
             }
+            onNavigateToAnalytics={() => handlePageChange("analytics")}
           />
         );
       case "calendar":
@@ -64,7 +68,13 @@ export default function App() {
           />
         );
       case "notifications":
-        return <NotificationsPage />;
+        return (
+          <NotificationsPage
+            onShowMeetingDetails={() =>
+              setShowMeetingDetails(true)
+            }
+          />
+        );
       case "settings":
         return <SettingsPage />;
       default:
@@ -84,11 +94,29 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 font-['Inter'] flex relative overflow-hidden">
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setIsMobileMenuOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-40 bg-white rounded-2xl p-3 shadow-lg"
+      >
+        <Menu className="w-6 h-6 text-gray-800" />
+      </button>
+
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="md:hidden fixed inset-0 bg-black/50 z-40 transition-opacity"
+        />
+      )}
+
       {/* Sidebar */}
       <Sidebar
         activePage={activePage}
         onPageChange={handlePageChange}
         onLogout={handleLogout}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
       />
 
       {/* Main Content */}
