@@ -11,6 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class DiarizationService:
     def __init__(self):
         self.voice_encoder = None
@@ -195,5 +196,6 @@ class DiarizationService:
             del self.pyannote_pipeline
             self.pyannote_pipeline = None
         self.is_initialized = False
+
 
 diarization_service = DiarizationService()

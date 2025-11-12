@@ -9,6 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class AudioBuffer:
     def __init__(self, conversation_id: str):
         self.conversation_id = conversation_id
@@ -185,6 +186,7 @@ class AudioBuffer:
             for _ in range(excess):
                 self.audio_buffer.popleft()
 
+
 class BufferManager:
     def __init__(self):
         self.buffers = {}
@@ -216,5 +218,6 @@ class BufferManager:
         if self.cleanup_task:
             self.cleanup_task.cancel()
             self.cleanup_task = None
+
 
 buffer_manager = BufferManager()

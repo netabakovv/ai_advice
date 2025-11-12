@@ -19,6 +19,7 @@ from typing import Dict, List
 logger = logging.getLogger(__name__)
 encoder = VoiceEncoder(device="cuda" if torch.cuda.is_available() else "cpu")
 
+
 class AudioProcessingService:
     def __init__(self):
         self.active_conversations = {}
@@ -453,5 +454,6 @@ class AudioProcessingService:
                 i += 1
                 
         db.commit()
+
 
 audio_processing_service = AudioProcessingService()

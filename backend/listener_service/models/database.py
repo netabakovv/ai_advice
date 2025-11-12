@@ -8,6 +8,7 @@ from utils.config import config
 
 Base = declarative_base()
 
+
 class User(Base):
     __tablename__ = "user"
     
@@ -19,6 +20,7 @@ class User(Base):
     voice_profile = relationship("VoiceProfile", back_populates="user")
     identified_speaker = relationship("Speaker", back_populates="user")
 
+
 class VoiceProfile(Base):
     __tablename__ = "voice_profile"
     
@@ -29,6 +31,7 @@ class VoiceProfile(Base):
     
     user = relationship("User", back_populates="voice_profile")
     embedding = relationship("VoiceEmbedding", back_populates="profile")
+
 
 class VoiceEmbedding(Base):
     __tablename__ = "voice_embedding"
@@ -42,6 +45,7 @@ class VoiceEmbedding(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     profile = relationship("VoiceProfile", back_populates="embedding")
+
 
 class Conversation(Base):
     __tablename__ = "conversation"
@@ -57,6 +61,7 @@ class Conversation(Base):
     phrase = relationship("Phrase", back_populates="conversation")
     speaker = relationship("Speaker", back_populates="conversation")
 
+
 class Speaker(Base):
     __tablename__ = "speaker"
     
@@ -71,6 +76,7 @@ class Speaker(Base):
     conversation = relationship("Conversation", back_populates="speaker")
     user = relationship("User", back_populates="identified_speaker")
     phrase = relationship("Phrase", back_populates="speaker")
+
 
 class Phrase(Base):
     __tablename__ = "phrase"
@@ -95,8 +101,10 @@ class Phrase(Base):
     conversation = relationship("Conversation", back_populates="phrase")
     speaker = relationship("Speaker", back_populates="phrase")
 
+
 engine = create_engine(config.DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def get_db():
     db = SessionLocal()
@@ -104,6 +112,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 def create_tables():
     Base.metadata.create_all(bind=engine)

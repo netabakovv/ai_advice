@@ -6,6 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class TranscriptionService:
     def __init__(self):
         self.model = None
@@ -69,5 +70,6 @@ class TranscriptionService:
             del self.model
             self.model = None
             self.is_initialized = False
+
 
 transcription_service = TranscriptionService()

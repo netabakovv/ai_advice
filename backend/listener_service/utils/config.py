@@ -4,6 +4,7 @@ from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()
 
+
 @dataclass
 class Config:
     DATABASE_URL: str = os.getenv("DATABASE_URL")
@@ -35,5 +36,6 @@ class Config:
     CONNECTION_TIMEOUT: int = 300
 
     EXTERNAL_CALLBACK_URL: str = os.getenv("EXTERNAL_CALLBACK_URL", "http://localhost:8001/conversation_completed")
+
 
 config = Config()
