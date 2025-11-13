@@ -15,4 +15,6 @@ asyncio
 torch
 hdbscan
 soundfile
+dotenv
+psycopg2
 python-dotenv

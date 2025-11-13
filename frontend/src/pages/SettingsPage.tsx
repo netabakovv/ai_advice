@@ -3,7 +3,7 @@ import { SettingInput } from "../components/SettingInput";
 import { AvatarCard } from "../components/AvatarCard";
 import { SettingSwitch } from "../components/SettingSwitch";
 import { Button } from "../components/ui/button";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Save, CheckCircle, Loader2 } from "lucide-react";
 
 // API Response Types

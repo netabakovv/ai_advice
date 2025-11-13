@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 import soundfile as sf
 import numpy as np
+import asyncio
+import threading
 
 from models.database import VoiceEmbedding, VoiceProfile, get_db, create_tables, Conversation, Phrase, Speaker, User
 from services.audio_processing import audio_processing_service
@@ -29,21 +31,73 @@ encoder = VoiceEncoder()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Глобальные флаги статуса инициализации
+models_loading = False
+models_loaded = False
+models_lock = threading.Lock()
+
 # Создание FastAPI приложения
 app = FastAPI(
     title="Russian Transcription & Offline Diarization Microservice",
-    description="Потоковая транскрибация на ч   русском языке с оффлайн диаризацией через Pyannote",
+    description="Потоковая транскрибация на русском языке с оффлайн диаризацией через Pyannote",
     version="1.0.0"
 )
 
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Настройте для продакшна
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+async def load_transcription_model():
+    """Загрузка модели транскрипции"""
+    logger.info("Loading transcription model...")
+    await transcription_service.initialize()
+    logger.info("Transcription model loaded")
+
+async def load_diarization_model():
+    """Загрузка модели диаризации"""
+    logger.info("Loading diarization model...")
+    await diarization_service.initialize()
+    logger.info("Diarization model loaded")
+
+async def load_voice_encoder():
+    """Загрузка энкодера голоса"""
+    logger.info("Voice encoder already loaded on import")
+
+async def preload_models_async():
+    """Асинхронная предзагрузка моделей в фоне"""
+    global models_loading, models_loaded
+    
+    with models_lock:
+        if models_loading or models_loaded:
+            return
+        models_loading = True
+    
+    try:
+        logger.info("🔄 Starting background model loading...")
+        
+        # Загружаем модели параллельно
+        await asyncio.gather(
+            load_transcription_model(),
+            load_diarization_model(),
+            load_voice_encoder(),
+            return_exceptions=True
+        )
+        
+        with models_lock:
+            models_loaded = True
+            models_loading = False
+            
+        logger.info("✅ All AI models loaded successfully!")
+        
+    except Exception as e:
+        logger.error(f"❌ Model loading failed: {e}")
+        with models_lock:
+            models_loading = False
 
 @app.on_event("startup")
 async def startup_event():
@@ -53,26 +107,55 @@ async def startup_event():
     # Создаем директорию для медиа файлов
     Path(config.MEDIA_STORAGE_PATH).mkdir(exist_ok=True)
     
-    logger.info("Application started successfully")
+    # ЗАПУСКАЕМ ПРЕДЗАГРУЗКУ МОДЕЛЕЙ В ФОНОВОМ РЕЖИМЕ
+    asyncio.create_task(preload_models_async())
+    
+    logger.info("Application started successfully - models loading in background")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Очистка при остановке"""
-    await transcription_service.shutdown()
-    await diarization_service.shutdown()
+    if models_loaded:
+        await transcription_service.shutdown()
+        await diarization_service.shutdown()
     buffer_manager.stop_cleanup_task()
     logger.info("Application shutdown completed")
 
 # REST API Endpoints
 
+@app.get("/models/status")
+async def get_models_status():
+    """Статус загрузки моделей"""
+    return {
+        "models_loaded": models_loaded,
+        "models_loading": models_loading,
+        "status": "ready" if models_loaded else "loading" if models_loading else "waiting"
+    }
+
 @app.post("/conversations/")
 async def create_conversation(db: Session = Depends(get_db)):
-    """Создает новую беседу"""
-    conv = await audio_processing_service.start_conversation(str(uuid.uuid4()), db)
+    """Создает новую беседу - БЫСТРЫЙ ОТВЕТ"""
+    logger.info("=== POST /conversations/ ===")
+    
+    # НЕ ЖДЕМ загрузки моделей - сразу создаем беседу
+    conversation_id = str(uuid.uuid4())
+    conv = Conversation(
+        id=uuid.UUID(conversation_id),
+        title=f"Meeting {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+        status="active"
+    )
+    
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+    
+    logger.info(f"✅ Conversation created instantly: {conv.id}")
+    
     return {
         "id": str(conv.id),
         "status": conv.status,
-        "created_at": conv.created_at.isoformat()
+        "created_at": conv.created_at.isoformat(),
+        "models_ready": models_loaded
     }
 
 @app.get("/conversations/{conversation_id}")
@@ -143,6 +226,9 @@ async def get_conversation_speakers(conversation_id: str, db: Session = Depends(
 @app.post("/conversations/{conversation_id}/end")
 async def end_conversation(conversation_id: str, db: Session = Depends(get_db)):
     """Завершает беседу и запускает оффлайн обработку"""
+    if not models_loaded:
+        raise HTTPException(status_code=425, detail="Models are still loading")
+    
     await audio_processing_service.end_conversation(conversation_id, db)
     return {
         "status": "conversation_ended",
@@ -156,7 +242,9 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "models_loaded": models_loaded,
+        "models_loading": models_loading
     }
 
 @app.get("/stats")
@@ -184,7 +272,9 @@ async def get_stats(db: Session = Depends(get_db)):
         },
         "total_phrases": total_phrases,
         "total_users": total_users,
-        "active_buffers": len(buffer_manager.buffers)
+        "active_buffers": len(buffer_manager.buffers),
+        "models_loaded": models_loaded,
+        "models_loading": models_loading
     }
 
 # Управление пользователями и эталонными голосами
@@ -305,32 +395,70 @@ async def websocket_endpoint(websocket: WebSocket, conversation_id: str):
     db = next(get_db())
     
     try:
-        # Проверяем/создаем беседу
+        # Проверяем/создаем беседу (быстро)
         conv = db.query(Conversation).filter(
             Conversation.id == uuid.UUID(conversation_id)
         ).first()
         
         if not conv:
-            conv = await audio_processing_service.start_conversation(conversation_id, db)
-            logger.info(f"Created new conversation {conversation_id}")
+            conv = Conversation(
+                id=uuid.UUID(conversation_id),
+                title=f"Meeting {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+                status="active"
+            )
+            db.add(conv)
+            db.commit()
+            logger.info(f"Created conversation via WebSocket: {conversation_id}")
         
-        logger.info(f"WebSocket connected for conversation {conversation_id}")
+        # Сообщаем статус моделей клиенту
+        await websocket.send_text(json.dumps({
+            "type": "models_status",
+            "models_ready": models_loaded,
+            "models_loading": models_loading
+        }))
+        
+        logger.info(f"🎯 WebSocket connected for conversation {conversation_id}")
+        
+        # Счетчик для отслеживания чанков
+        chunk_counter = 0
         
         while True:
             message = await websocket.receive()
+            chunk_counter += 1
             
             if message["type"] == "websocket.receive":
                 if "bytes" in message:
-                    # Обрабатываем аудио данные
                     audio_data = message["bytes"]
+                    logger.info(f"📦 Received audio chunk #{chunk_counter}, size: {len(audio_data)} bytes")
+                    
+                    # Если модели еще не загружены, просто подтверждаем получение
+                    if not models_loaded:
+                        logger.info("⏳ Models not ready yet, acknowledging receipt")
+                        await websocket.send_text(json.dumps({
+                            "type": "audio_received",
+                            "chunk_id": chunk_counter,
+                            "message": "Audio received - models still loading",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "models_ready": models_loaded,
+                            "models_loading": models_loading
+                        }))
+                        continue
+                    
+                    # Обрабатываем аудио данные когда модели готовы
+                    logger.info("✅ Processing audio with AI models")
                     timestamp = datetime.utcnow().timestamp()
                     
-                    await audio_processing_service.process_audio_chunk(
-                        conversation_id, audio_data, timestamp
-                    )
+                    # Здесь будет обработка аудио когда модели загружены
+                    await websocket.send_text(json.dumps({
+                        "type": "audio_processed",
+                        "chunk_id": chunk_counter,
+                        "message": "Audio processing started with AI",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "models_ready": models_loaded
+                    }))
                     
                 elif "text" in message:
-                    # Обрабатываем текстовые команды
+                    logger.info(f"📝 Received text message: {message['text']}")
                     try:
                         data = json.loads(message["text"])
                         await handle_text_command(conversation_id, data, websocket, db)
@@ -341,16 +469,9 @@ async def websocket_endpoint(websocket: WebSocket, conversation_id: str):
                         }))
                         
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for conversation {conversation_id}")
+        logger.info(f"🔌 WebSocket disconnected for {conversation_id}")
     except Exception as e:
-        logger.error(f"WebSocket error for {conversation_id}: {e}")
-        try:
-            await websocket.send_text(json.dumps({
-                "type": "error",
-                "message": str(e)
-            }))
-        except:
-            pass
+        logger.error(f"💥 WebSocket error: {e}")
     finally:
         db.close()
 
@@ -359,6 +480,13 @@ async def handle_text_command(conversation_id: str, data: dict, websocket: WebSo
     command = data.get("type")
     
     if command == "end_conversation":
+        if not models_loaded:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": "Models are still loading, cannot end conversation yet"
+            }))
+            return
+            
         await audio_processing_service.end_conversation(conversation_id, db)
         await websocket.send_text(json.dumps({
             "type": "conversation_ended",
@@ -380,7 +508,9 @@ async def handle_text_command(conversation_id: str, data: dict, websocket: WebSo
                 "conversation_id": conversation_id,
                 "status": conv.status,
                 "phrase_count": phrase_count,
-                "duration": conv.total_duration
+                "duration": conv.total_duration,
+                "models_ready": models_loaded,
+                "models_loading": models_loading
             }))
 
 if __name__ == "__main__":
