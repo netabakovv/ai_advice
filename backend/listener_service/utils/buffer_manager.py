@@ -65,20 +65,23 @@ class AudioBuffer:
         chunk_start = self.last_processed_time
         chunk_end = chunk_start + self.chunk_duration
 
-        '''
-        total_size = self.chunk_size + self.overlap_size
-        if len(self.audio_buffer) < total_size:
-            total_size = len(self.audio_buffer)
-        '''
+        if self.last_processed_time > 0:
+            # Для последующих чанков добавляем перекрытие
+            overlap_buffer = list(self.audio_buffer)[:self.chunk_size + self.overlap_size]
+            chunk_data = np.array(overlap_buffer)
+        else:
+            # Для первого чанка перекрытие не нужно
+            chunk_data = np.array(list(self.audio_buffer)[:self.chunk_size])
 
-        chunk_data = np.array(list(self.audio_buffer)[:self.chunk_size])
-
-        for _ in range(self.chunk_size):
+        samples_to_remove = self.chunk_size
+        for _ in range(min(samples_to_remove, len(self.audio_buffer))):
             self.audio_buffer.popleft()
 
         self.last_processed_time = chunk_end
 
-        return chunk_data, chunk_start, chunk_end
+        actual_start = max(0.0, chunk_start - self.overlap_duration) if self.last_processed_time > self.chunk_duration else chunk_start
+
+        return chunk_data, actual_start, chunk_end
 
         '''
         if self.start_time == 0:

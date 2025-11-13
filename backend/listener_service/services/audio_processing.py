@@ -90,6 +90,7 @@ class AudioProcessingService:
         if audio_chunk is None or len(audio_chunk) == 0:
             return
         
+        '''
         overlap_duration = config.OVERLAP_DURATION
         overlap_samples = int(overlap_duration * audio_buffer.sample_rate)
         
@@ -99,13 +100,11 @@ class AudioProcessingService:
 
         conv_info['previous_overlap_buffer'] = audio_chunk[-overlap_samples:]
 
-        sr = audio_buffer.sample_rate
-        segment_duration = len(audio_chunk) / sr
+        overlap_duration_sec = overlap_samples / audio_buffer.sample_rate
+        '''
 
         # Обрабатываем каждый голосовой сегмент
-        await self._process_voice_segment(
-                conversation_id, audio_chunk, chunk_start, 0.0, segment_duration
-        )
+        await self._process_voice_segment(conversation_id, audio_chunk, chunk_start, chunk_start, chunk_end)
 
     async def _process_voice_segment(self, conversation_id: str, segment_audio: np.ndarray,
                                    segment_start_time: float, chunk_start_no_overlap: float, segment_end_time: float):
@@ -190,9 +189,11 @@ class AudioProcessingService:
             for (text, rel_start, rel_end, confidence) in transcription_results:
                 abs_start = segment_start_time + rel_start
                 abs_end = segment_start_time + rel_end
-
+                
+                '''
                 if abs_start < chunk_start_no_overlap:
                     continue
+                '''
 
                 text = text.strip()
                 if not text:
@@ -208,7 +209,7 @@ class AudioProcessingService:
                     continue
 
                 #same_speaker = spk == current["speaker_id"]
-                short_pause = abs_start - current["end"] < 0.4
+                short_pause = abs_start - current["end"] < 1.0 #0.4
 
             # Если пауза между фразами меньше 0.4 с → объединяем
                 if short_pause:
