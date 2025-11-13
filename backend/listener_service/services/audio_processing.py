@@ -2,6 +2,7 @@ import asyncio
 import numpy as np
 import torch
 import hdbscan
+import aiohttp
 from sqlalchemy.orm import Session
 from resemblyzer import VoiceEncoder, preprocess_wav
 from models.database import get_db, Conversation, Phrase, Speaker, User, VoiceProfile, VoiceEmbedding
@@ -97,7 +98,7 @@ class AudioProcessingService:
         audio_with_overlap = np.concatenate([prev_overlap, audio_chunk])
 
         conv_info['previous_overlap_buffer'] = audio_chunk[-overlap_samples:]
-        
+
         sr = audio_buffer.sample_rate
         segment_duration = len(audio_chunk) / sr
 
@@ -285,7 +286,7 @@ class AudioProcessingService:
             del self.active_conversations[conversation_id]
             
         logger.info(f"Conversation {conversation_id} ended, offline processing started")
-
+    
     async def _perform_offline_diarization(self, conversation_id: str, media_path: str):
         """Выполняет оффлайн диаризацию и сопоставление с эталонными голосами"""
         db = next(get_db())
@@ -350,12 +351,28 @@ class AudioProcessingService:
                 db.commit()
                 
             logger.info(f"Offline diarization completed for {conversation_id}")
+
+            await self._notify_external_service(conversation_id)
             
         except Exception as e:
             logger.error(f"Offline diarization failed for {conversation_id}: {e}")
             db.rollback()
         finally:
             db.close()
+
+    async def _notify_external_service(self, conversation_id: str):
+        url = config.EXTERNAL_CALLBACK_URL
+        payload = {"conversation_id": conversation_id}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, timeout=5) as resp:
+                    if resp.status == 200:
+                        logger.info(f"Successfully notified external service for {conversation_id}")
+                    else:
+                        logger.warning(f"External service responded with {resp.status} for {conversation_id}")
+        except Exception as e:
+            logger.error(f"Failed to notify external service for {conversation_id}: {e}")
 
     async def _load_reference_embeddings(self, db: Session) -> Dict[str, List[np.ndarray]]:
         """Загружает эталонные эмбеддинги пользователей"""
