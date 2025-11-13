@@ -19,7 +19,6 @@ from typing import Dict, List
 logger = logging.getLogger(__name__)
 encoder = VoiceEncoder(device="cuda" if torch.cuda.is_available() else "cpu")
 
-
 class AudioProcessingService:
     def __init__(self):
         self.active_conversations = {}
@@ -44,7 +43,8 @@ class AudioProcessingService:
             'conversation': conv,
             'last_activity': datetime.utcnow(),
             'chunk_sequence': 0,
-            'previous_text': ''
+            'previous_text': '',
+            'previous_overlap_buffer': np.array([], dtype=np.float32)
         }
         
         self.processing_tasks[str(conv.id)] = asyncio.create_task(
@@ -90,12 +90,15 @@ class AudioProcessingService:
         if audio_chunk is None or len(audio_chunk) == 0:
             return
         
-        '''
-        # Детекция голосовой активности
-        voice_segments = audio_buffer.detect_voice_activity(audio_chunk)
-        if not voice_segments:
-            return
-        '''
+        overlap_duration = config.OVERLAP_DURATION
+        overlap_samples = int(overlap_duration * audio_buffer.sample_rate)
+        
+        prev_overlap = conv_info.get('previous_overlap_buffer', np.array([], dtype=np.float32))
+        
+        audio_with_overlap = np.concatenate([prev_overlap, audio_chunk])
+
+        conv_info['previous_overlap_buffer'] = audio_chunk[-overlap_samples:]
+
         sr = audio_buffer.sample_rate
         segment_duration = len(audio_chunk) / sr
 
@@ -104,16 +107,14 @@ class AudioProcessingService:
                 conversation_id, audio_chunk, chunk_start, 0.0, segment_duration
         )
 
-    async def _process_voice_segment(self, conversation_id: str, audio_chunk: np.ndarray,
-                                   chunk_start: float, segment_start: float, segment_end: float):
+    async def _process_voice_segment(self, conversation_id: str, segment_audio: np.ndarray,
+                                   segment_start_time: float, chunk_start_no_overlap: float, segment_end_time: float):
         """Обрабатывает голосовой сегмент"""
         conv_info = self.active_conversations[conversation_id]
         
         # Извлекаем аудио сегмент
         sr = 16000
-        start_sample = int(segment_start * sr)
-        end_sample = int(segment_end * sr)
-        segment_audio = audio_chunk[start_sample:end_sample]
+        segment_duration = len(segment_audio) / sr
         
         if len(segment_audio) < 1600:
             return
@@ -130,7 +131,7 @@ class AudioProcessingService:
         # Сохранение в БД (без определения спикера)
         await self._store_transcription_results(
             conversation_id, transcription_results, 
-            chunk_start, conv_info['chunk_sequence'], segment_audio
+            segment_start_time, chunk_start_no_overlap, segment_end_time, conv_info['chunk_sequence'], segment_audio
         )
         
         # Обновляем контекст
@@ -176,19 +177,12 @@ class AudioProcessingService:
             return [(0, len(audio_data) / sample_rate, 0)]
 
     async def _store_transcription_results(self, conversation_id: str, transcription_results: List,
-                                         segment_start_time: float, chunk_sequence: int, audio_data: np.ndarray = None, sample_rate: int = 16000):
+                                         segment_start_time: float, chunk_start_no_overlap: float, segment_end_time: float, chunk_sequence: int, audio_data: np.ndarray = None, sample_rate: int = 16000):
         """Сохраняет результаты транскрибации в БД"""
         db = next(get_db())
         
         try:
             audio_buffer = buffer_manager.get_buffer(conversation_id)
-
-            '''
-            if audio_data is not None:
-                diarization_segments = self._get_diarization_segments(audio_data, sample_rate)
-            else:
-                diarization_segments = [(0, 9999, 0)]
-            '''
 
             merged_segments = []
             current = None
@@ -196,16 +190,14 @@ class AudioProcessingService:
             for (text, rel_start, rel_end, confidence) in transcription_results:
                 abs_start = segment_start_time + rel_start
                 abs_end = segment_start_time + rel_end
+
+                if abs_start < chunk_start_no_overlap:
+                    continue
+
                 text = text.strip()
-                
-                '''
-                mid = (rel_start + rel_end) / 2.0
-                spk = 0
-                for (s, e, sid) in diarization_segments:
-                    if s <= mid <= e:
-                        spk = sid
-                        break
-                '''
+                if not text:
+                    continue
+
                 if not current:
                     current = dict(
                         start=abs_start,
@@ -294,7 +286,7 @@ class AudioProcessingService:
             del self.active_conversations[conversation_id]
             
         logger.info(f"Conversation {conversation_id} ended, offline processing started")
-
+    
     async def _perform_offline_diarization(self, conversation_id: str, media_path: str):
         """Выполняет оффлайн диаризацию и сопоставление с эталонными голосами"""
         db = next(get_db())
@@ -454,6 +446,5 @@ class AudioProcessingService:
                 i += 1
                 
         db.commit()
-
 
 audio_processing_service = AudioProcessingService()

@@ -9,7 +9,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class AudioBuffer:
     def __init__(self, conversation_id: str):
         self.conversation_id = conversation_id
@@ -33,6 +32,8 @@ class AudioBuffer:
         self.max_buffer_size = int(self.sample_rate * self.buffer_duration)
         self.overlap_size = int(self.sample_rate * self.overlap_duration)
 
+        self.last_processed_time = 0.0
+
     def add_audio_chunk(self, audio_data: bytes, timestamp: float) -> bool:
         try:
             audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
@@ -44,10 +45,14 @@ class AudioBuffer:
             self.full_recording.extend(audio_array)
             
             self.total_samples += len(audio_array)
+            '''
             ready = False
             if len(self.audio_buffer) >= self.chunk_size + self.overlap_size:
                 ready = True
             return ready
+            '''
+
+            return len(self.audio_buffer) >= self.chunk_size
             
         except Exception as e:
             logger.error(f"Error adding audio chunk: {e}")
@@ -57,19 +62,21 @@ class AudioBuffer:
         if len(self.audio_buffer) < self.chunk_size:
             return None, 0.0, 0.0
         
-        chunk_start = self.start_time
+        chunk_start = self.last_processed_time
         chunk_end = chunk_start + self.chunk_duration
 
+        '''
         total_size = self.chunk_size + self.overlap_size
         if len(self.audio_buffer) < total_size:
             total_size = len(self.audio_buffer)
-        
-        chunk_data = np.array(list(self.audio_buffer)[:total_size])
+        '''
 
-        for _ in range(min(self.chunk_size, len(self.audio_buffer))):
+        chunk_data = np.array(list(self.audio_buffer)[:self.chunk_size])
+
+        for _ in range(self.chunk_size):
             self.audio_buffer.popleft()
 
-        self.start_time += self.chunk_duration
+        self.last_processed_time = chunk_end
 
         return chunk_data, chunk_start, chunk_end
 
@@ -186,7 +193,6 @@ class AudioBuffer:
             for _ in range(excess):
                 self.audio_buffer.popleft()
 
-
 class BufferManager:
     def __init__(self):
         self.buffers = {}
@@ -218,6 +224,5 @@ class BufferManager:
         if self.cleanup_task:
             self.cleanup_task.cancel()
             self.cleanup_task = None
-
 
 buffer_manager = BufferManager()
