@@ -2,8 +2,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from domain.models import Utterance
 from application.analyze_meeting import analyze_meeting_use_case
+from domain.models import Utterance
 
 router = APIRouter()
 

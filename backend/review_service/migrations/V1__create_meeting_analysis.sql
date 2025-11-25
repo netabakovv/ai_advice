@@ -4,4 +4,4 @@ CREATE TABLE IF NOT EXISTS meeting_analysis (
     data JSONB NOT NULL
 );
 
-CREATE INDEX idx_meeting_analysis_offtopic ON meeting_analysis USING GIN ((data->'off_topic_segments'));
+CREATE INDEX IF NOT EXISTS idx_meeting_analysis_offtopic ON meeting_analysis USING GIN ((data->'off_topic_segments'));

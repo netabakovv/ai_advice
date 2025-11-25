@@ -296,6 +296,7 @@ async def list_users(db: Session = Depends(get_db)):
         for user in users
     ]
 
+
 # WebSocket для потокового аудио
 
 @app.websocket("/ws/{conversation_id}")
@@ -353,6 +354,7 @@ async def websocket_endpoint(websocket: WebSocket, conversation_id: str):
             pass
     finally:
         db.close()
+
 
 async def handle_text_command(conversation_id: str, data: dict, websocket: WebSocket, db: Session):
     """Обрабатывает текстовые команды через WebSocket"""
