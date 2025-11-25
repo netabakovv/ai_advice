@@ -56,8 +56,8 @@ class AnalysisStorage:
                 cur.execute(
                     """
                     SELECT speaker, text
-                    FROM transcripts
-                    WHERE meeting_id = %s
+                    FROM phrase
+                    WHERE id = %s
                     ORDER BY id  -- или timestamp, если есть
                     """,
                     (meeting_id,)
