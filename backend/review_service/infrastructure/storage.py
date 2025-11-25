@@ -1,8 +1,9 @@
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import psycopg2
-from psycopg2.extras import Json
+from psycopg2.extras import Json, RealDictCursor
 from domain.models import MeetingReport
+from domain.models import Utterance
 
 
 class AnalysisStorage:
@@ -41,3 +42,25 @@ class AnalysisStorage:
                 if row:
                     return row[0]
                 return None
+
+    def fetch_transcript_by_meeting_id(self, meeting_id: str) -> List[Utterance]:
+        """
+        Читает реплики из общей таблицы транскрипций.
+        Предполагается, что таблица называется `transcripts` и имеет колонки:
+        - meeting_id
+        - speaker (или speaker_id)
+        - text
+        """
+        with psycopg2.connect(self.dsn) as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT speaker, text
+                    FROM transcripts
+                    WHERE meeting_id = %s
+                    ORDER BY id  -- или timestamp, если есть
+                    """,
+                    (meeting_id,)
+                )
+                rows = cur.fetchall()
+                return [Utterance(row["speaker"], row["text"]) for row in rows]
