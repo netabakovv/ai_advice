@@ -58,7 +58,7 @@ class AnalysisStorage:
                     SELECT speaker, text
                     FROM phrase
                     WHERE conversation_id = %s
-                    ORDER BY id  -- или timestamp, если есть
+                    ORDER BY created_at;
                     """,
                     (meeting_id,)
                 )

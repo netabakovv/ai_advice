@@ -1,48 +1,75 @@
-# main.py
-from fastapi import FastAPI
+# analyzer_worker.py
+import os
+import time
+import sys
+from dotenv import load_dotenv
 from infrastructure.nlp_model import EmbeddingModel
 from infrastructure.storage import AnalysisStorage
-from api.routes import router, set_dependencies
-from infrastructure.db_init import init_db
-from dotenv import load_dotenv
-import os
-import sys
+from application.analyze_meeting import analyze_meeting_use_case
 
 load_dotenv()
 
-db_url = os.getenv("DATABASE_URL")
-if not db_url:
-    print("Переменная окружения DATABASE_URL не задана")
-    sys.exit(1)
 
-try:
-    print("Инициализация базы данных...")
-    init_db()
-except Exception as e:
-    print(f"Ошибка при инициализации БД: {e}")
-    sys.exit(1)
+def get_unprocessed_conversation_ids(storage) -> list:
+    """Возвращает conversation_id из `phrase`, которых нет в `meeting_analysis`"""
+    with storage._connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT conversation_id
+                FROM phrase
+                WHERE conversation_id NOT IN (
+                    SELECT meeting_id FROM meeting_analysis
+                )
+            """)
+            return [row[0] for row in cur.fetchall()]
 
-try:
-    print("Загрузка NLP-модели...")
-    embedding_model = EmbeddingModel()
-    print("Модель загружена")
-except Exception as e:
-    print(f"Ошибка загрузки модели: {e}")
-    sys.exit(1)
 
-try:
+# Расширяем AnalysisStorage для внутреннего подключения
+def _connect(self):
+    return psycopg2.connect(self.dsn)
+
+
+import psycopg2
+AnalysisStorage._connect = _connect
+
+
+def main():
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        print("❌ DATABASE_URL не задан")
+        sys.exit(1)
+
+    print("🧠 Загрузка NLP-модели...")
+    model = EmbeddingModel()
     storage = AnalysisStorage(db_url)
-    print("Storage готов")
-except Exception as e:
-    print(f"Ошибка инициализации storage: {e}")
-    sys.exit(1)
+    print("✅ Готов к работе. Начинаю мониторинг...")
 
-set_dependencies(embedding_model=embedding_model, storage=storage)
+    while True:
+        try:
+            unprocessed = get_unprocessed_conversation_ids(storage)
+            if not unprocessed:
+                print("⏳ Нет новых встреч. Жду 10 секунд...")
+                time.sleep(10)
+                continue
 
-app = FastAPI(title="Meeting Analyzer Service", version="1.0")
-app.include_router(router)
+            for cid in unprocessed:
+                print(f"🔍 Обрабатываю conversation_id: {cid}")
+                utterances = storage.fetch_transcript_by_meeting_id(cid)
+                if not utterances:
+                    print(f"⚠️  Нет реплик для {cid}")
+                    continue
+
+                report = analyze_meeting_use_case(utterances, model)
+                storage.save_analysis(cid, report)
+                print(f"✅ Сохранён анализ для {cid}")
+
+        except KeyboardInterrupt:
+            print("\n🛑 Остановка анализа...")
+            break
+        except Exception as e:
+            print(f"❌ Ошибка: {e}")
+            time.sleep(5)
 
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "component": "meeting-analyzer"}
+if __name__ == "__main__":
+    main()
