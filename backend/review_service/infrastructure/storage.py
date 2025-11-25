@@ -57,7 +57,7 @@ class AnalysisStorage:
                     """
                     SELECT speaker, text
                     FROM phrase
-                    WHERE id = %s
+                    WHERE conversation_id = %s
                     ORDER BY id  -- или timestamp, если есть
                     """,
                     (meeting_id,)
