@@ -170,30 +170,56 @@ class DiarizationService:
         except:
             return 0.0
 
-    def match_clusters_to_users(self, cluster_embeddings: Dict[str, np.ndarray], 
-                              reference_embeddings: Dict[str, List[np.ndarray]]) -> Dict[str, Tuple[str, float]]:
-        """Сопоставляет кластеры с известными пользователями"""
-        matches = {}
+    def match_clusters_to_users(
+        self, 
+        cluster_embeddings: Dict[int, np.ndarray], 
+        reference_embeddings: Dict[str, List[np.ndarray]]
+    ) -> Dict[str, Tuple[Optional[str], float]]:
+        """
+        Сравнивает эмбеддинги кластеров с эталонными эмбеддингами юзеров.
         
-        for cluster, cluster_emb in cluster_embeddings.items():
+        Возвращает словарь:
+        {
+            '0': ('user_uuid_string', 0.85),  # Кластер 0 - это User A с уверенностью 85%
+            '1': (None, 0.0)                  # Кластер 1 - неизвестный
+        }
+        """
+        matches = {}
+        threshold = 0.70  # Порог уверенности (косинусное сходство)
+
+        for cluster_id, cluster_emb in cluster_embeddings.items():
             best_user = None
-            best_similarity = 0.0
-            
-            for user_id, user_embeddings in reference_embeddings.items():
-                # Берем максимальное сходство среди всех эталонов пользователя
-                similarities = [self.compare_embeddings(cluster_emb, ref_emb) for ref_emb in user_embeddings]
-                max_similarity = max(similarities) if similarities else 0.0
+            best_score = -1.0
+
+            # Нормализуем вектор кластера (resemblyzer обычно выдает уже норм., но на всякий случай)
+            cluster_emb = cluster_emb / np.linalg.norm(cluster_emb)
+
+            # Перебираем всех юзеров из БД
+            for user_id, user_embs_list in reference_embeddings.items():
+                if not user_embs_list:
+                    continue
+
+                # Сравниваем с каждым эмбеддингом юзера (или со средним)
+                # user_embs_list - это список векторов. Превращаем в матрицу.
+                ref_matrix = np.array(user_embs_list)
                 
-                if max_similarity > best_similarity:
+                # Матричное умножение (dot product) для косинусного сходства
+                # (т.к. векторы нормализованы, dot == cosine similarity)
+                scores = np.inner(cluster_emb, ref_matrix)
+                
+                # Берем максимальное совпадение по всем семплам юзера
+                current_score = np.max(scores)
+
+                if current_score > best_score:
+                    best_score = current_score
                     best_user = user_id
-                    best_similarity = max_similarity
-            
-            # Применяем порог
-            if best_similarity >= config.SPEAKER_SIMILARITY_THRESHOLD:
-                matches[cluster] = (best_user, best_similarity)
+
+            # Проверяем порог
+            if best_score >= threshold:
+                matches[str(cluster_id)] = (best_user, float(best_score))
             else:
-                matches[cluster] = (None, best_similarity)  # Неизвестный спикер
-                
+                matches[str(cluster_id)] = (None, 0.0)
+
         return matches
 
     async def shutdown(self):
