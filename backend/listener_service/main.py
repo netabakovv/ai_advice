@@ -209,23 +209,29 @@ def enroll_voice(
     db: Session = Depends(get_db)
 ):
     try:
-         # 0) найти/создать пользователя
+        # 0) найти/создать пользователя
         user = None
+        # Проверяем, передан ли user_id как строка (и не пустая ли она)
         if user_id and user_id.strip():
             try:
-                uid = uuid.UUID(user_id)
+                # Парсим UUID из строки
+                requested_uid = uuid.UUID(user_id)
             except Exception:
                 raise HTTPException(status_code=400, detail="Invalid user_id format")
-            user = db.query(User).get(uid)
+            
+            user = db.query(User).get(requested_uid)
             if user is None:
                 raise HTTPException(status_code=404, detail="User not found")
+            uid = user.id # Используем ID найденного пользователя
         else:
+            # Создание нового
             if not email:
                 raise HTTPException(status_code=400, detail="Missing email for new user")
             user = User(email=email, display_name=display_name)
             db.add(user)
-            db.flush()  # теперь user.id установлен
-        uid = user.id  # используем UUID из БД, НЕ парсим снова
+            db.flush()  # Получаем ID
+            uid = user.id
+
         # 1) читаем файл
         file_bytes = audio.file.read()
         if not file_bytes:
@@ -236,14 +242,13 @@ def enroll_voice(
         if wav.size < TARGET_SR * 1.0:
             raise HTTPException(status_code=400, detail="Too short audio (>=1s)")
 
-        # 3) эмбеддинг (256-D)
+        # 3) эмбеддинг
         emb = encoder.embed_utterance(wav).astype(np.float32).tolist()
-
-        # 4) получаем/создаем профиль
-        uid = uuid.UUID(user_id)
+        
         profile = db.query(VoiceProfile).filter(
             VoiceProfile.user_id == uid, VoiceProfile.label == label
         ).first()
+        
         if profile is None:
             profile = VoiceProfile(user_id=uid, label=label)
             db.add(profile)
@@ -252,14 +257,19 @@ def enroll_voice(
         # 5) сохраняем embedding
         ve = VoiceEmbedding(
             profile_id=profile.id,
-            embedding=emb,                 # JSONB список 256 float
+            embedding=emb, 
             sample_rate=sr,
             duration=float(len(wav) / sr),
             device_info=device_info
         )
         db.add(ve)
         db.commit()
-        return {"status": "ok", "voice_embedding_id": str(ve.id), "profile_id": str(profile.id)}
+        return {
+            "status": "ok", 
+            "user_id": str(uid),
+            "voice_embedding_id": str(ve.id), 
+            "profile_id": str(profile.id)
+        }
 
     except HTTPException:
         db.rollback()

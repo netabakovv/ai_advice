@@ -28,8 +28,10 @@ class DiarizationService:
 
     def _load_models(self):
         # Загружаем Resemblyzer для эмбеддингов
-        self.voice_encoder = VoiceEncoder()
-        
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.voice_encoder = VoiceEncoder(device=device)
+        logger.info(f"Resemblyzer loaded on {device}")
+
         # Загружаем Pyannote для диаризации
         if config.HUGGINGFACE_TOKEN:
             try:
@@ -38,6 +40,8 @@ class DiarizationService:
                     "pyannote/speaker-diarization-3.1",
                     token=config.HUGGINGFACE_TOKEN
                 )
+                if torch.cuda.is_available():
+                    self.pyannote_pipeline.to(torch.device("cuda"))
                 logger.info("Pyannote pipeline loaded")
             except Exception as e:
                 logger.warning(f"Could not load Pyannote: {e}")
@@ -124,6 +128,10 @@ class DiarizationService:
         """Вычисляет эмбеддинги для каждого кластера"""
         try:
             audio_data, sr = sf.read(audio_path)
+
+            if audio_data.ndim == 2:
+                audio_data = np.mean(audio_data, axis=1)
+
             if sr != config.SAMPLE_RATE:
                 import librosa
                 audio_data = librosa.resample(audio_data, orig_sr=sr, target_sr=config.SAMPLE_RATE)

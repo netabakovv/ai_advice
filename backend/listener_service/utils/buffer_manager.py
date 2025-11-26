@@ -1,3 +1,4 @@
+import itertools
 import numpy as np
 import asyncio
 import webrtcvad
@@ -22,6 +23,8 @@ class AudioBuffer:
         self.full_recording = []  # Сохраняем всю запись для оффлайн обработки
         self.total_samples = 0
         self.start_time = 0.0
+
+        self.prev_chunk_tail = np.array([], dtype=np.float32)
         
         # VAD
         self.vad = webrtcvad.Vad(config.VAD_AGGRESSIVENESS)
@@ -32,9 +35,20 @@ class AudioBuffer:
         self.max_buffer_size = int(self.sample_rate * self.buffer_duration)
         self.overlap_size = int(self.sample_rate * self.overlap_duration)
 
-        self.last_processed_time = 0.0
+        self.last_processed_end_time = 0.0
+
+        self.is_finished = False
+
+    def mark_finished(self):
+        self.is_finished = True
+    
+    def is_empty(self):
+        return len(self.audio_buffer) < self.chunk_size
 
     def add_audio_chunk(self, audio_data: bytes, timestamp: float) -> bool:
+        if self.is_finished:
+            return
+        
         try:
             audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
             
@@ -45,12 +59,6 @@ class AudioBuffer:
             self.full_recording.extend(audio_array)
             
             self.total_samples += len(audio_array)
-            '''
-            ready = False
-            if len(self.audio_buffer) >= self.chunk_size + self.overlap_size:
-                ready = True
-            return ready
-            '''
 
             return len(self.audio_buffer) >= self.chunk_size
             
@@ -59,119 +67,40 @@ class AudioBuffer:
             return False
 
     def get_processing_chunk(self):
-        if len(self.audio_buffer) < self.chunk_size:
+        buffer_len = len(self.audio_buffer)
+
+        if buffer_len < self.chunk_size and not self.is_finished:
             return None, 0.0, 0.0
         
-        chunk_start = self.last_processed_time
-        chunk_end = chunk_start + self.chunk_duration
+        if buffer_len == 0:
+            return None, 0.0, 0.0
+        
+        take_size = min(buffer_len, self.chunk_size)
 
-        if self.last_processed_time > 0:
-            # Для последующих чанков добавляем перекрытие
-            overlap_buffer = list(self.audio_buffer)[:self.chunk_size + self.overlap_size]
-            chunk_data = np.array(overlap_buffer)
-        else:
-            # Для первого чанка перекрытие не нужно
-            chunk_data = np.array(list(self.audio_buffer)[:self.chunk_size])
-
-        samples_to_remove = self.chunk_size
-        for _ in range(min(samples_to_remove, len(self.audio_buffer))):
+        new_data = np.array(list(itertools.islice(self.audio_buffer, 0, take_size)), dtype=np.float32)
+        
+        for _ in range(take_size):
             self.audio_buffer.popleft()
+        
+        processing_audio = np.concatenate([self.prev_chunk_tail, new_data])
 
-        self.last_processed_time = chunk_end
+        chunk_start_time = self.last_processed_end_time 
+        chunk_end_time = chunk_start_time + (len(new_data) / self.sample_rate)
 
-        actual_start = max(0.0, chunk_start - self.overlap_duration) if self.last_processed_time > self.chunk_duration else chunk_start
+        audio_start_absolute = chunk_start_time - (len(self.prev_chunk_tail) / self.sample_rate)
 
-        return chunk_data, actual_start, chunk_end
+        self.last_processed_end_time = chunk_end_time
 
-        '''
-        if self.start_time == 0:
-            chunk_data = np.array(list(self.audio_buffer)[:self.chunk_size])
-            chunk_start = 0.0
-            chunk_end = self.chunk_duration
-
-            for _ in range(self.chunk_size):
-                self.audio_buffer.popleft()
-            self.start_time = chunk_end - self.overlap_duration
+        if len(processing_audio) >= self.overlap_size:
+            self.prev_chunk_tail = processing_audio[-self.overlap_size:]
         else:
-            total_size = self.chunk_size + self.overlap_size
-            if len(self.audio_buffer) < total_size:
-                return None, self.start_time, self.start_time + self.chunk_duration
-            chunk_data = np.array(list(self.audio_buffer)[:total_size])
-            chunk_start = self.start_time
-            chunk_end = chunk_start + self.chunk_duration
+            self.prev_chunk_tail = processing_audio # Если данных очень мало, сохраняем всё
 
-            for _ in range(self.chunk_size):
-                self.audio_buffer.popleft()
-            self.start_time = chunk_end - self.overlap_duration
-        
-        return chunk_data, chunk_start, chunk_end
-        
-        
-        chunk_start = self.start_time
-        chunk_end = chunk_start + self.chunk_duration
-
-        if self.start_time > 0:
-            chunk_data = np.array(list(self.audio_buffer)[:self.chunk_size + self.overlap_size])
-            actual_start = max(0, chunk_start - self.overlap_duration)
-        else:
-            chunk_data = np.array(list(self.audio_buffer)[:self.chunk_size])
-            actual_start = chunk_start
-
-        samples_to_remove = max(1, self.chunk_size - self.overlap_size)
-        for _ in range(min(samples_to_remove, len(self.audio_buffer))):
-            self.audio_buffer.popleft()
-
-        self.start_time = chunk_end - self.overlap_duration
-        return chunk_data, actual_start, chunk_end
-        '''
-
-    '''
-    def detect_voice_activity(self, audio_chunk):
-        if len(audio_chunk) == 0:
-            return []
-            
-        frame_duration = 30
-        frame_size = int(self.sample_rate * frame_duration / 1000)
-        voice_segments = []
-        current_segment_start = None
-
-        for i in range(0, len(audio_chunk) - frame_size + 1, frame_size):
-            frame = audio_chunk[i:i + frame_size]
-            frame_pcm = (frame * 32768.0).astype(np.int16).tobytes()
-            
-            try:
-                is_speech = self.vad.is_speech(frame_pcm, self.sample_rate)
-                timestamp = i / self.sample_rate
-                
-                if is_speech and current_segment_start is None:
-                    current_segment_start = timestamp
-                elif not is_speech and current_segment_start is not None:
-                    voice_segments.append((current_segment_start, timestamp))
-                    current_segment_start = None
-                    
-            except Exception as e:
-                logger.warning(f"VAD error: {e}")
-                continue
-
-        if current_segment_start is not None:
-            voice_segments.append((current_segment_start, len(audio_chunk) / self.sample_rate))
-
-        return voice_segments
-    '''
+        return processing_audio, audio_start_absolute, chunk_end_time
 
     def should_merge_with_previous(self, current_text: str, time_gap: float) -> bool:
         return time_gap < 0.5
 
-    '''
-    def is_incomplete_sentence(self, text: str) -> bool:
-        t = text.strip().lower()
-        return any([
-            t and t[0].islower(),
-            t and t[-1] not in '.!?',
-            len(t.split()) < 3,
-            any(t.startswith(w) for w in ['и', 'но', 'а', 'также', 'то', 'затем'])
-        ])
-    '''
 
     def save_full_recording(self) -> str:
         """Сохраняет полную запись в файл для оффлайн обработки"""
@@ -190,11 +119,14 @@ class AudioBuffer:
         return str(filepath)
 
     def cleanup_old_data(self):
+        '''
         max_samples = int(self.sample_rate * self.buffer_duration * 2)
         if len(self.audio_buffer) > max_samples:
             excess = len(self.audio_buffer) - max_samples
             for _ in range(excess):
                 self.audio_buffer.popleft()
+        '''
+        pass
 
 class BufferManager:
     def __init__(self):

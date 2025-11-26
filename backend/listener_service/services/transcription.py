@@ -43,7 +43,17 @@ class TranscriptionService:
             return []
     
     def _transcribe_sync(self, audio_data: np.ndarray, previous_text: str):
-        initial_prompt = previous_text[-80:].strip()
+        raw_prompt = previous_text[-400:]
+
+        if len(previous_text) > 400 and " " in raw_prompt:
+            initial_prompt = raw_prompt.split(" ", 1)[1]
+        else:
+            initial_prompt = raw_prompt
+
+        initial_prompt = initial_prompt.strip()
+        
+        if not initial_prompt:
+            pass
             
         segments, info = self.model.transcribe(
             audio_data,
@@ -51,7 +61,7 @@ class TranscriptionService:
             initial_prompt=initial_prompt,
             word_timestamps=True,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=600)
+            vad_parameters=dict(min_silence_duration_ms=300)
         )
         
         results = []

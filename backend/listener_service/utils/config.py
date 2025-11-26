@@ -14,8 +14,8 @@ class Config:
     
     # Audio processing
     SAMPLE_RATE: int = 16000
-    CHUNK_DURATION: float = 8.0
-    BUFFER_DURATION: float = 90.0
+    CHUNK_DURATION: float = 4.0
+    BUFFER_DURATION: float = 10.0
     OVERLAP_DURATION: float = 1.0
     
     # Whisper

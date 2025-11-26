@@ -45,7 +45,7 @@ class AudioProcessingService:
             'last_activity': datetime.utcnow(),
             'chunk_sequence': 0,
             'previous_text': '',
-            'previous_overlap_buffer': np.array([], dtype=np.float32)
+            'last_saved_end_time': 0.0
         }
         
         self.processing_tasks[str(conv.id)] = asyncio.create_task(
@@ -72,15 +72,39 @@ class AudioProcessingService:
         """Основной цикл обработки беседы"""
         logger.info(f"Processing loop started for {conversation_id}")
         
-        while conversation_id in self.active_conversations:
+        while True:
             try:
-                await self._process_next_chunk(conversation_id)
-                await asyncio.sleep(0.25)
+                if conversation_id not in self.active_conversations:
+                    break
+                
+                audio_buffer = buffer_manager.get_buffer(conversation_id)
+
+                if len(audio_buffer.audio_buffer) == 0 and audio_buffer.is_finished:
+                    logger.info(f"Buffer drained for {conversation_id}.")
+                    break
+
+                chunk_data_tuple = audio_buffer.get_processing_chunk()
+                audio_chunk, abs_start_time, abs_end_time = chunk_data_tuple
+
+                if audio_chunk is None:
+                    if audio_buffer.is_finished and len(audio_buffer.audio_buffer) == 0:
+                        logger.info(f"Buffer drained for {conversation_id}.")
+                        break
+                    await asyncio.sleep(0.1)
+                    continue
+
+                await self._process_voice_segment(conversation_id, audio_chunk, abs_start_time)
+                
+                await asyncio.sleep(0.01)
+
             except asyncio.CancelledError:
+                logger.info(f"Task cancelled for {conversation_id}")
                 break
             except Exception as e:
                 logger.error(f"Processing error for {conversation_id}: {e}")
                 await asyncio.sleep(0.5)
+
+        await self._finalize_conversation(conversation_id)
 
     async def _process_next_chunk(self, conversation_id: str):
         """Обрабатывает следующий доступный аудио чанк"""
@@ -91,24 +115,11 @@ class AudioProcessingService:
         if audio_chunk is None or len(audio_chunk) == 0:
             return
         
-        '''
-        overlap_duration = config.OVERLAP_DURATION
-        overlap_samples = int(overlap_duration * audio_buffer.sample_rate)
-        
-        prev_overlap = conv_info.get('previous_overlap_buffer', np.array([], dtype=np.float32))
-        
-        audio_with_overlap = np.concatenate([prev_overlap, audio_chunk])
-
-        conv_info['previous_overlap_buffer'] = audio_chunk[-overlap_samples:]
-
-        overlap_duration_sec = overlap_samples / audio_buffer.sample_rate
-        '''
-
         # Обрабатываем каждый голосовой сегмент
         await self._process_voice_segment(conversation_id, audio_chunk, chunk_start, chunk_start, chunk_end)
 
     async def _process_voice_segment(self, conversation_id: str, segment_audio: np.ndarray,
-                                   segment_start_time: float, chunk_start_no_overlap: float, segment_end_time: float):
+                                   segment_abs_start_time: float):
         """Обрабатывает голосовой сегмент"""
         conv_info = self.active_conversations[conversation_id]
         
@@ -127,19 +138,50 @@ class AudioProcessingService:
         
         if not transcription_results:
             return
+    
+        clean_results = []
+        max_end_time_in_batch = conv_info['last_saved_end_time']
+
+        for res in transcription_results:
+            text, rel_start, rel_end, conf = res
+
+            abs_phrase_start = segment_abs_start_time + rel_start
+            abs_phrase_end = segment_abs_start_time + rel_end
+        
+        # 1. Отсекаем фразы из зоны оверлапа (те, что уже были в прошлом чанке)
+        # Если фраза заканчивается внутри зоны перекрытия - это 100% дубль.
+        # Если начинается в перекрытии, но уходит дальше - берем, но аккуратно.
+        # Самое надежное: игнорировать все, что начинается раньше, чем закончился оверлап + маленький буфер (0.1с)
+            if abs_phrase_end <= (conv_info['last_saved_end_time'] + 0.1):
+                continue
             
+            if abs_phrase_start < conv_info['last_saved_end_time'] - 0.5:
+                 # Если текст совпадает с контекстом, можно скипнуть, но пока просто пишем
+                 pass
+        # 2. Фильтр фантомов Whisper
+        # Whisper может галлюцинировать на тишине.
+        # Обычно такие галлюцинации имеют низкую уверенность или повторяющийся паттерн.
+            if conf < 0.4: # Если уверенность ниже 40%, лучше пропустить
+                continue
+            
+            clean_results.append((text, abs_phrase_start, abs_phrase_end, conf))
+            max_end_time_in_batch = max(max_end_time_in_batch, abs_phrase_end)
+
+        if not clean_results:
+            return
+  
         # Сохранение в БД (без определения спикера)
         await self._store_transcription_results(
-            conversation_id, transcription_results, 
-            segment_start_time, chunk_start_no_overlap, segment_end_time, conv_info['chunk_sequence'], segment_audio
+            conversation_id, clean_results, conv_info['chunk_sequence']
         )
         
+        conv_info['last_saved_end_time'] = max_end_time_in_batch
+
         # Обновляем контекст
-        for text, _, _, _ in transcription_results:
-            conv_info['previous_text'] += ' ' + text
-            
-        if len(conv_info['previous_text']) > 200:
-            conv_info['previous_text'] = conv_info['previous_text'][-200:]
+        current_text = " ".join([t[0] for t in clean_results])
+        conv_info['previous_text'] += ' ' + current_text
+        if len(conv_info['previous_text']) > 400:
+            conv_info['previous_text'] = conv_info['previous_text'][-400:]
 
     def _get_diarization_segments(self, audio_data: np.ndarray, sample_rate: int = 16000):
         try:
@@ -176,78 +218,24 @@ class AudioProcessingService:
             logger.warning(f"Диаризация не удалась: {e}")
             return [(0, len(audio_data) / sample_rate, 0)]
 
-    async def _store_transcription_results(self, conversation_id: str, transcription_results: List,
-                                         segment_start_time: float, chunk_start_no_overlap: float, segment_end_time: float, chunk_sequence: int, audio_data: np.ndarray = None, sample_rate: int = 16000):
+    async def _store_transcription_results(self, conversation_id: str, results: List, chunk_sequence: int):
         """Сохраняет результаты транскрибации в БД"""
         db = next(get_db())
-        
         try:
-            audio_buffer = buffer_manager.get_buffer(conversation_id)
-
-            merged_segments = []
-            current = None
-            
-            for (text, rel_start, rel_end, confidence) in transcription_results:
-                abs_start = segment_start_time + rel_start
-                abs_end = segment_start_time + rel_end
-                
-                '''
-                if abs_start < chunk_start_no_overlap:
-                    continue
-                '''
-
-                text = text.strip()
-                if not text:
-                    continue
-
-                if not current:
-                    current = dict(
-                        start=abs_start,
-                        end=abs_end,
-                        text=text,
-                        confidence=confidence
-                    )
-                    continue
-
-                #same_speaker = spk == current["speaker_id"]
-                short_pause = abs_start - current["end"] < 1.0 #0.4
-
-            # Если пауза между фразами меньше 0.4 с → объединяем
-                if short_pause:
-                    current["end"] = abs_end
-                    current["text"] = (current["text"] + " " + text).strip()
-                    current["confidence"] = (current["confidence"] + confidence) / 2
-                else:
-                    merged_segments.append(current)
-                    current = dict(
-                        start=abs_start,
-                        end=abs_end,
-                        text=text,
-                        confidence=confidence
-                    )
-
-            if current:
-                merged_segments.append(current)
-
-        # Записываем каждую итоговую фразу отдельно
-            for seg in merged_segments:
+            for (text, abs_start, abs_end, confidence) in results:
                 phrase = Phrase(
                     conversation_id=uuid.UUID(conversation_id),
-                    text=seg["text"],
-                    start_time=seg["start"],
-                    end_time=seg["end"],
-                    confidence=seg["confidence"],
+                    text=text,
+                    start_time=abs_start,
+                    end_time=abs_end,
+                    confidence=confidence,
                     chunk_sequence=chunk_sequence,
                     language="ru",
                     is_final=False,
-                    needs_merge=False,
-                    speaker_id=None,  # заполним позже через pyannote
+                    speaker_id=None
                 )
-
                 db.add(phrase)
-                db.commit()
-                audio_buffer.last_phrase_end_time = seg["end"]
-                
+            db.commit()
         except Exception as e:
             db.rollback()
             logger.error(f"Error storing transcription: {e}")
@@ -258,37 +246,60 @@ class AudioProcessingService:
         """Завершает беседу и запускает оффлайн обработку"""
         if conversation_id not in self.active_conversations:
             return
-            
-        # Останавливаем обработку
-        if conversation_id in self.processing_tasks:
-            self.processing_tasks[conversation_id].cancel()
-            del self.processing_tasks[conversation_id]
-            
-        # Сохраняем полную запись
+        
+        logger.info(f"Signal to end conversation {conversation_id} received.")
+
         audio_buffer = buffer_manager.get_buffer(conversation_id)
-        media_path = audio_buffer.save_full_recording()
-        
-        # Обновляем беседу
-        conv = db.query(Conversation).filter(
-            Conversation.id == uuid.UUID(conversation_id)
-        ).first()
-        
-        if conv and media_path:
+        audio_buffer.mark_finished()
+
+        conv = db.query(Conversation).filter(Conversation.id == uuid.UUID(conversation_id)).first()
+        if conv:
             conv.status = "processing"
-            conv.media_uri = media_path
-            conv.total_duration = len(audio_buffer.full_recording) / audio_buffer.sample_rate
             db.commit()
-            
-            # Запускаем оффлайн диаризацию
-            asyncio.create_task(self._perform_offline_diarization(conversation_id, media_path))
+
+        return
         
-        # Очистка
-        buffer_manager.remove_buffer(conversation_id)
-        if conversation_id in self.active_conversations:
-            del self.active_conversations[conversation_id]
+    async def _finalize_conversation(self, conversation_id: str):
+        """Вызывается когда буфер пуст и поток завершен"""
+        logger.info(f"Finalizing conversation {conversation_id}...")
+        
+        # Получаем данные перед удалением из словарей
+        if conversation_id not in self.active_conversations:
+            logger.error(f"Context lost during finalize {conversation_id}")
+            return
+
+        db = next(get_db())
+        try:
+            # Сохраняем полную запись
+            audio_buffer = buffer_manager.get_buffer(conversation_id)
+            media_path = audio_buffer.save_full_recording()
             
-        logger.info(f"Conversation {conversation_id} ended, offline processing started")
-    
+            # Обновляем беседу в БД
+            conv = db.query(Conversation).filter(
+                Conversation.id == uuid.UUID(conversation_id)
+            ).first()
+            
+            if conv and media_path:
+                conv.media_uri = media_path
+                conv.total_duration = len(audio_buffer.full_recording) / audio_buffer.sample_rate
+                db.commit()
+                
+                # Запускаем тяжелую оффлайн диаризацию
+                # Важно: запускаем это как отдельную таску, так как текущая таска (_process_conversation) сейчас завершится
+                asyncio.create_task(self._perform_offline_diarization(conversation_id, media_path))
+            
+        except Exception as e:
+            logger.error(f"Error during finalization {conversation_id}: {e}")
+        finally:
+            # Чистка ресурсов
+            buffer_manager.remove_buffer(conversation_id)
+            if conversation_id in self.active_conversations:
+                del self.active_conversations[conversation_id]
+            if conversation_id in self.processing_tasks:
+                del self.processing_tasks[conversation_id]
+            db.close()
+            logger.info(f"Conversation {conversation_id} removed from active memory.")
+
     async def _perform_offline_diarization(self, conversation_id: str, media_path: str):
         """Выполняет оффлайн диаризацию и сопоставление с эталонными голосами"""
         db = next(get_db())
@@ -304,6 +315,11 @@ class AudioProcessingService:
             
             if not segments:
                 logger.warning(f"No diarization segments for {conversation_id}")
+                # Даже если диаризации нет, помечаем как completed
+                conv = db.query(Conversation).filter(Conversation.id == uuid.UUID(conversation_id)).first()
+                if conv:
+                    conv.status = "completed"
+                    db.commit()
                 return
                 
             # Вычисляем эмбеддинги кластеров
@@ -342,7 +358,7 @@ class AudioProcessingService:
             await self._assign_speakers_to_phrases(db, conversation_id, segments, speakers_map)
             
             # Финальная склейка фраз одного спикера
-            await self._final_phrase_merge(db, conversation_id)
+            #await self._final_phrase_merge(db, conversation_id)
             
             # Помечаем беседу как завершенную
             conv = db.query(Conversation).filter(
@@ -406,16 +422,39 @@ class AudioProcessingService:
         """Присваивает спикеров фразам на основе временных интервалов"""
         phrases = db.query(Phrase).filter(
             Phrase.conversation_id == uuid.UUID(conversation_id)
-        ).order_by(Phrase.start_time).all()
+        ).all()
         
         for phrase in phrases:
-            # Находим пересекающийся сегмент
+            phrase_start = phrase.start_time
+            phrase_end = phrase.end_time
+            phrase_center = phrase_start + (phrase_end - phrase_start) / 2
+        
+            assigned_speaker_id = None
+        
+        # Стратегия 1: Кто говорит в центре фразы? (Самая точная для коротких реплик)
             for start_time, end_time, cluster, _ in segments:
-                if (phrase.start_time < end_time and phrase.end_time > start_time):
+                if start_time <= phrase_center <= end_time:
                     if cluster in speakers_map:
-                        phrase.speaker_id = speakers_map[cluster]
-                    break
-                    
+                        assigned_speaker_id = speakers_map[cluster]
+                        break # Нашли владельца центра
+        
+        # Стратегия 2 (Fallback): Если центр попал в паузу диаризации (такое бывает),
+        # берем того, у кого максимальное перекрытие.
+            if not assigned_speaker_id:
+                best_overlap = 0
+                for start_time, end_time, cluster, _ in segments:
+                    overlap_start = max(phrase_start, start_time)
+                    overlap_end = min(phrase_end, end_time)
+                    overlap = max(0, overlap_end - overlap_start)
+                
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        if cluster in speakers_map:
+                            assigned_speaker_id = speakers_map[cluster]
+
+            if assigned_speaker_id:
+                phrase.speaker_id = assigned_speaker_id
+        
             phrase.is_final = True
             
         db.commit()
@@ -426,24 +465,33 @@ class AudioProcessingService:
             Phrase.conversation_id == uuid.UUID(conversation_id)
         ).order_by(Phrase.start_time).all()
         
+        if not phrases:
+            return
+
         i = 0
         while i < len(phrases) - 1:
             current = phrases[i]
             next_phrase = phrases[i + 1]
             
-            # Проверяем условия склейки
-            if (current.speaker_id == next_phrase.speaker_id and
-                current.speaker_id is not None and
-                next_phrase.start_time - current.end_time < 2.0):  # Пауза < 2 сек
-                
+            # Параметры склейки
+            same_speaker = (current.speaker_id == next_phrase.speaker_id and current.speaker_id is not None)
+            short_pause = (next_phrase.start_time - current.end_time) < 1.0 # Пауза до 1 сек
+            
+            # ВАЖНО: Лимит длины. Не склеиваем, если фраза уже длиннее 15 секунд (примерно абзац)
+            current_duration = current.end_time - current.start_time
+            not_too_long = current_duration < 15.0 
+
+            if same_speaker and short_pause and not_too_long:
                 # Склеиваем
                 current.text = (current.text + " " + next_phrase.text).strip()
                 current.end_time = next_phrase.end_time
                 current.updated_at = datetime.utcnow()
+                # Усредняем уверенность
+                current.confidence = (current.confidence + next_phrase.confidence) / 2
                 
                 db.delete(next_phrase)
                 phrases.pop(i + 1)
-                
+                # i не увеличиваем, пробуем склеить current со следующим (бывшим i+2)
             else:
                 i += 1
                 
