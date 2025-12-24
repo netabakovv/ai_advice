@@ -3,10 +3,12 @@ from typing import Optional
 from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import librosa
+import asyncio
 from sqlalchemy.orm import Session
 import json
 import uuid
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 import soundfile as sf
@@ -312,6 +314,7 @@ async def list_users(db: Session = Depends(get_db)):
 @app.websocket("/ws/{conversation_id}")
 async def websocket_endpoint(websocket: WebSocket, conversation_id: str):
     """WebSocket эндпоинт для потокового аудио"""
+    logger.info(f"🎤 WS CONNECT: {conversation_id}")  
     await websocket.accept()
     db = next(get_db())
     
@@ -365,6 +368,69 @@ async def websocket_endpoint(websocket: WebSocket, conversation_id: str):
     finally:
         db.close()
 
+@app.websocket("/ws/live/{conversation_id}")
+async def live_moderation_ws(websocket: WebSocket, conversation_id: str):
+    logger.info(f"🚨 LIVE WS CONNECT: {conversation_id}")
+    await websocket.accept()
+    
+    # 🆕 АНТИСПАМ переменные
+    last_alert_time = 0
+    ALERT_COOLDOWN = 10  # сек между алертами
+    last_score = 1.0     # Последний score
+    
+    try:
+        # Получаем agenda
+        first_msg = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        data = json.loads(first_msg)
+        agenda = data.get("agenda", "")
+        logger.info(f"📋 AGENDA: {agenda}")
+        
+        # Сохраняем agenda
+        if conversation_id in audio_processing_service.active_conversations:
+            audio_processing_service.active_conversations[conversation_id]['agenda'] = agenda
+        
+        while True:
+            latest_score = buffer_manager.get_latest_score(conversation_id)
+            score = latest_score["score"]
+            reason = latest_score.get("reason", "")
+            
+            logger.debug(f"📊 LIVE CHECK: score={score:.2f} reason={reason}")
+            
+            current_time = time.time()
+            
+            # 🆕 АНТИСПАМ: score < 0.6 И cooldown И ухудшение
+            if (score < 0.6 and 
+                (current_time - last_alert_time) > ALERT_COOLDOWN and 
+                score < last_score - 0.05):  # Ухудшился на 0.05
+                
+                alert = {
+                    "type": "alert",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "score": round(score, 2),
+                    "message": "Возможно, отошли от темы",
+                    "suggestion": "Вернемся к повестке?",
+                    "reason": reason
+                }
+                await websocket.send_json(alert)
+                logger.warning(f"🚨 ALERT SENT: score={score:.2f} '{reason}'")
+                last_alert_time = current_time
+            else:
+                if score < 0.6:
+                    logger.debug(f"📊 score={score:.2f} (cooldown={current_time-last_alert_time:.1f}s)")
+                else:
+                    logger.debug(f"✅ score={score:.2f} (on-topic)")
+            
+            last_score = score
+            await asyncio.sleep(2)
+            
+    except asyncio.TimeoutError:
+        logger.error(f"🚨 LIVE WS TIMEOUT: {conversation_id}")
+    except json.JSONDecodeError:
+        logger.error(f"🚨 LIVE WS JSON ERROR: {conversation_id}")
+    except Exception as e:
+        logger.error(f"❌ LIVE WS ERROR: {e}")
+    finally:
+        logger.info(f"🔌 LIVE WS DISCONNECTED: {conversation_id}")
 
 async def handle_text_command(conversation_id: str, data: dict, websocket: WebSocket, db: Session):
     """Обрабатывает текстовые команды через WebSocket"""

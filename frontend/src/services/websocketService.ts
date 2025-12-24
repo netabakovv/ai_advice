@@ -1,139 +1,183 @@
+import { toast } from 'sonner';// 🆕 Sonner импорт
+
 class WebSocketService {
-    private socket: WebSocket | null = null;
-    private backendUrl = 'http://localhost:8000';
-    private currentConversationId: string | null = null;
-    private isConnected: boolean = false;
-    private reconnectAttempts: number = 0;
-    private maxReconnectAttempts = 5;
-    private onModelsStatus?: (ready: boolean, loading: boolean) => void;
+  private liveSocket: WebSocket | null = null;
+  private onLiveAlerts?: (alert: any) => void;
+  private socket: WebSocket | null = null;
+  private backendUrl = 'http://localhost:8000';
+  private currentConversationId: string | null = null;
+  private isConnected: boolean = false;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts = 5;
+  private onModelsStatus?: (ready: boolean, loading: boolean) => void;
 
-    setModelsStatusCallback(callback: (ready: boolean, loading: boolean) => void) {
-        this.onModelsStatus = callback;
+  setModelsStatusCallback(callback: (ready: boolean, loading: boolean) => void) {
+    this.onModelsStatus = callback;
+  }
+
+  async connect(conversationId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const wsUrl = `${this.backendUrl.replace('http', 'ws')}/ws/${conversationId}`;
+        console.log('WebSocket URL:', wsUrl);
+        
+        this.socket = new WebSocket(wsUrl);
+        this.currentConversationId = conversationId;
+
+        this.socket.onopen = () => {
+          console.log('✅ WebSocket connected for conversation:', conversationId);
+          this.isConnected = true;
+          this.reconnectAttempts = 0;
+          resolve();
+        };
+
+        this.socket.onerror = (error) => {
+          console.error('❌ WebSocket error:', error);
+          reject(new Error('WebSocket connection failed'));
+        };
+
+        this.socket.onclose = (event) => {
+          console.log('WebSocket disconnected:', event.code, event.reason);
+          this.isConnected = false;
+          this.handleReconnection();
+        };
+
+        this.socket.onmessage = (event) => {
+          this.handleMessage(event.data);
+        };
+
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  connectLiveModeration(conversationId: string, agenda: string, onAlerts: (alert: any) => void): void {
+    this.onLiveAlerts = onAlerts;
+    
+    const wsUrl = `${this.backendUrl.replace('http', 'ws')}/ws/live/${conversationId}`;
+    this.liveSocket = new WebSocket(wsUrl);
+    
+    this.liveSocket.onopen = () => {
+      console.log('🚨 Live moderation WS connected');
+      this.liveSocket!.send(JSON.stringify({ agenda }));
+    };
+    
+    this.liveSocket.onmessage = (event) => {
+      try {
+        const alert = JSON.parse(event.data);
+        if (alert.type === 'alert') {
+          toast.error(`🚨 score: ${alert.score} — ${alert.message}`, {
+            description: alert.reason || 'Оффтоп',
+            duration: 6000,
+          });
+          console.log('🚨 ALERT:', alert);
+          
+          // 🆕 Callback для legacy статусов
+          if (this.onLiveAlerts) {
+            this.onLiveAlerts(alert);
+          }
+        }
+      } catch (e) {
+        console.error('Live WS parse error:', e);
+      }
+    };
+    
+    this.liveSocket.onclose = () => {
+      console.log('Live moderation WS closed');
+    };
+  }
+
+  disconnectLive(): void {
+    if (this.liveSocket) {
+      this.liveSocket.close();
+      this.liveSocket = null;
+    }
+  }
+
+  async sendRawAudio(pcmBuffer: ArrayBufferLike): Promise<void> {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket is not connected, cannot send audio data.');
+      return;
     }
 
-    async connect(conversationId: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            try {
-                const wsUrl = `${this.backendUrl.replace('http', 'ws')}/ws/${conversationId}`;
-                console.log('WebSocket URL:', wsUrl);
-                
-                this.socket = new WebSocket(wsUrl);
-                this.currentConversationId = conversationId;
+    try {
+      const arrayBufferToSend = pcmBuffer.slice(0);
+      this.socket.send(arrayBufferToSend);
+    } catch (error) {
+      console.error('❌ Error sending raw audio data via WebSocket:', error);
+    }
+  }
 
-                this.socket.onopen = () => {
-                    console.log('✅ WebSocket connected for conversation:', conversationId);
-                    this.isConnected = true;
-                    this.reconnectAttempts = 0;
-                    resolve();
-                };
+  async endConversation(): Promise<void> {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
-                this.socket.onerror = (error) => {
-                    console.error('❌ WebSocket error:', error);
-                    reject(new Error('WebSocket connection failed'));
-                };
+    try {
+      this.socket.send(JSON.stringify({
+        type: 'end_conversation'
+      }));
+      console.log('End conversation command sent');
+    } catch (error) {
+      console.error('Error ending conversation:', error);
+    }
+  }
 
-                this.socket.onclose = (event) => {
-                    console.log('WebSocket disconnected:', event.code, event.reason);
-                    this.isConnected = false;
-                    this.handleReconnection();
-                };
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+    this.isConnected = false;
+    this.currentConversationId = null;
+  }
 
-                this.socket.onmessage = (event) => {
-                    this.handleMessage(event.data);
-                };
-
-            } catch (error) {
-                reject(error);
-            }
+  private handleReconnection(): void {
+    if (this.reconnectAttempts < this.maxReconnectAttempts && this.currentConversationId) {
+      this.reconnectAttempts++;
+      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      
+      setTimeout(() => {
+        this.connect(this.currentConversationId!).catch(error => {
+          console.error('Reconnection failed:', error);
         });
+      }, 2000 * this.reconnectAttempts);
     }
+  }
 
-    async sendRawAudio(pcmBuffer: ArrayBufferLike): Promise<void> {
-        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-            // Не бросаем ошибку, чтобы не прерывать поток, если соединение momentarily потеряно
-            console.warn('WebSocket is not connected, cannot send audio data.');
-            return;
+  private handleMessage(data: string): void {
+    try {
+      const message = JSON.parse(data);
+      console.log('📨 WebSocket message received:', message);
+      
+      if (message.type === 'models_status') {
+        console.log(`🤖 Models status - Ready: ${message.models_ready}, Loading: ${message.models_loading}`);
+        if (this.onModelsStatus) {
+          this.onModelsStatus(message.models_ready, message.models_loading);
         }
-
-        try {
-            // pcmBuffer уже является ArrayBuffer в нужном формате
-            const arrayBufferToSend = pcmBuffer.slice(0);
-            this.socket.send(arrayBufferToSend);
-        } catch (error) {
-            console.error('❌ Error sending raw audio data via WebSocket:', error);
-            // Здесь можно решить, бросать ли ошибку или просто логировать
-        }
+      }
+      
+      if (message.type === 'audio_received') {
+        console.log('✅ Server received audio chunk:', message.chunk_id);
+      }
+      
+      if (message.type === 'audio_processed') {
+        console.log('🎯 AI started processing audio chunk:', message.chunk_id);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error parsing WebSocket message:', error);
     }
+  }
 
-    async endConversation(): Promise<void> {
-        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-            return;
-        }
+  getConnectionStatus(): boolean {
+    return this.isConnected && this.socket?.readyState === WebSocket.OPEN;
+  }
 
-        try {
-            this.socket.send(JSON.stringify({
-                type: 'end_conversation'
-            }));
-            console.log('End conversation command sent');
-        } catch (error) {
-            console.error('Error ending conversation:', error);
-        }
-    }
-
-    disconnect(): void {
-        if (this.socket) {
-            this.socket.close();
-            this.socket = null;
-        }
-        this.isConnected = false;
-        this.currentConversationId = null;
-    }
-
-    private handleReconnection(): void {
-        if (this.reconnectAttempts < this.maxReconnectAttempts && this.currentConversationId) {
-            this.reconnectAttempts++;
-            console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-            
-            setTimeout(() => {
-                this.connect(this.currentConversationId!).catch(error => {
-                    console.error('Reconnection failed:', error);
-                });
-            }, 2000 * this.reconnectAttempts);
-        }
-    }
-
-    private handleMessage(data: string): void {
-        try {
-            const message = JSON.parse(data);
-            console.log('📨 WebSocket message received:', message);
-            
-            if (message.type === 'models_status') {
-                console.log(`🤖 Models status - Ready: ${message.models_ready}, Loading: ${message.models_loading}`);
-                if (this.onModelsStatus) {
-                    this.onModelsStatus(message.models_ready, message.models_loading);
-                }
-            }
-            
-            if (message.type === 'audio_received') {
-                console.log('✅ Server received audio chunk:', message.chunk_id);
-            }
-            
-            if (message.type === 'audio_processed') {
-                console.log('🎯 AI started processing audio chunk:', message.chunk_id);
-            }
-            
-        } catch (error) {
-            console.error('❌ Error parsing WebSocket message:', error);
-        }
-    }
-
-    getConnectionStatus(): boolean {
-        return this.isConnected && this.socket?.readyState === WebSocket.OPEN;
-    }
-
-    getConversationId(): string | null {
-        return this.currentConversationId;
-    }
+  getConversationId(): string | null {
+    return this.currentConversationId;
+  }
 }
 
 export const websocketService = new WebSocketService();

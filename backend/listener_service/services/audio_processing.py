@@ -13,6 +13,7 @@ from utils.config import config
 import logging
 import uuid
 import json
+import time
 from datetime import datetime
 from typing import Dict, List
 
@@ -236,6 +237,11 @@ class AudioProcessingService:
     async def _store_transcription_results(self, conversation_id: str, results: List, chunk_sequence: int, identified_user_id: str):
         """Сохраняет результаты транскрибации в БД"""
         db = next(get_db())
+
+        conv_info = self.active_conversations.get(conversation_id)
+        agenda = conv_info.get('agenda', 'продажи Q4, бюджет') if conv_info else ''
+        logger.info(f"🔍 CHUNK #{chunk_sequence}: {len(results)} phrases | agenda='{agenda[:30]}...'")
+
         try:
             # 1. Определяем Speaker UUID
             final_speaker_id = None
@@ -277,7 +283,16 @@ class AudioProcessingService:
                         conv_info['speaker_map'][identified_user_id] = final_speaker_id
 
             # 2. Сохраняем фразы
-            for (text, abs_start, abs_end, confidence) in results:
+            for i, (text, abs_start, abs_end, confidence) in enumerate(results):
+                logger.info(f"  📝 Phrase {i+1}: '{text[:40]}...' [{abs_start:.1f}-{abs_end:.1f}s]")
+                
+                # 🆕 АНАЛИЗ ОФФТОПА
+                score_data = await buffer_manager.analyze_realtime(conversation_id, text, agenda)
+                logger.info(f"  ✅ SCORE: {score_data['score']:.2f} | {score_data['reason']}")
+                
+                # 🆕 GLOBAL CACHE
+                buffer_manager.latest_scores[conversation_id] = score_data
+                
                 phrase = Phrase(
                     conversation_id=uuid.UUID(conversation_id),
                     text=text,
@@ -287,33 +302,62 @@ class AudioProcessingService:
                     chunk_sequence=chunk_sequence,
                     language="ru",
                     is_final=False,
-                    speaker_id=final_speaker_id # <-- Вставляем ID из таблицы Speaker
+                    speaker_id=final_speaker_id,
+                    score=score_data["score"],           # 🆕
+                    off_topic_reason=score_data["reason"] # 🆕
                 )
                 db.add(phrase)
             
             db.commit()
+            logger.info(f"✅ CHUNK #{chunk_sequence} SAVED ({len(results)} phrases)")
+            
         except Exception as e:
             db.rollback()
-            logger.error(f"Error storing transcription: {e}")
+            logger.error(f"❌ CHUNK #{chunk_sequence} ERROR: {e}")
         finally:
             db.close()
 
     async def end_conversation(self, conversation_id: str, db: Session):
-        """Завершает беседу и запускает оффлайн обработку"""
+        """Завершает беседу + дожидается Whisper (30s max)"""
         if conversation_id not in self.active_conversations:
             return
         
-        logger.info(f"Signal to end conversation {conversation_id} received.")
-
+        logger.info(f"🛑 END {conversation_id[:8]}... (drain buffer +30s max)")
+        
         audio_buffer = buffer_manager.get_buffer(conversation_id)
         audio_buffer.mark_finished()
-
+        
         conv = db.query(Conversation).filter(Conversation.id == uuid.UUID(conversation_id)).first()
         if conv:
             conv.status = "processing"
             db.commit()
+        
+        # 🆕 ДОЖДАТЬСЯ Whisper (30s max!)
+        try:
+            logger.info(f"⏳ DRAINING buffer {conversation_id[:8]}...")
+            await asyncio.wait_for(self._drain_remaining_buffer(conversation_id), timeout=30.0)
+            logger.info(f"✅ BUFFER DRAINED: {conversation_id[:8]}")
+        except asyncio.TimeoutError:
+            logger.warning(f"⏰ BUFFER TIMEOUT 30s: {conversation_id[:8]} (Whisper still works)")
+        
+        logger.info(f"🎉 END COMPLETE: {conversation_id[:8]}")
 
-        return
+    async def _drain_remaining_buffer(self, conversation_id: str):
+        """Дожидается обработки оставшихся чанков Whisper"""
+        max_wait = 30  # сек
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait:
+            buffer = buffer_manager.get_buffer(conversation_id)
+            if buffer.is_empty() and not buffer_manager.has_pending_chunks(conversation_id):
+                logger.info(f"📭 Buffer EMPTY: {conversation_id[:8]}")
+                break
+            
+            logger.debug(f"⏳ Buffer {conversation_id[:8]}: {len(buffer.audio_buffer)} samples left")
+            await asyncio.sleep(1)
+        
+        logger.info(f"📊 Drain complete: {time.time() - start_time:.1f}s waited")
+
         
     async def _finalize_conversation(self, conversation_id: str):
         """Вызывается когда буфер пуст и поток завершен"""

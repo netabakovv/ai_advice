@@ -29,13 +29,17 @@ class Config:
     SPEAKER_SIMILARITY_THRESHOLD: float = 0.82
     
     # VAD
-    VAD_AGGRESSIVENESS: int = 2
+    VAD_AGGRESSIVENESS: int = 1
     
     # WebSocket
     MAX_CONNECTIONS: int = 100
     CONNECTION_TIMEOUT: int = 300
 
     EXTERNAL_CALLBACK_URL: str = os.getenv("EXTERNAL_CALLBACK_URL", "http://localhost:8001/conversation_completed")
+
+    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+
 
 
 config = Config()

@@ -94,6 +94,9 @@ class Phrase(Base):
     is_final = Column(Boolean, default=False)
     needs_merge = Column(Boolean, default=False)
     chunk_sequence = Column(Integer)
+
+    score: float = Column(Float, default=1.0)  # 🆕 Релевантность 0-1
+    off_topic_reason = Column(String(255))
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

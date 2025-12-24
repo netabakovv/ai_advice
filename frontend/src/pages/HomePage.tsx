@@ -1,6 +1,7 @@
 import { Paperclip } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { StartListeningButton } from "../components/StartListeningButton";
+import { websocketService } from '../services/websocketService';
 
 export function HomePage() {
   return (
@@ -12,11 +13,15 @@ export function HomePage() {
               {/* Main Input Section - ЗАМЕНА НА КНОПКУ ПРОСЛУШИВАНИЯ */}
               <div className="text-center mb-8 md:mb-12">
                 <div className="mb-4 md:mb-6">
-                  <StartListeningButton
-                      meetingId="home-meeting"
-                      onJoin={(meetingId) => console.log('ИИ-помощник запущен:', meetingId)}
-                      onLeave={() => console.log('ИИ-помощник остановлен')}
-                  />
+                <StartListeningButton
+                  meetingId="home-meeting"
+                  onJoin={(meetingId) => console.log('🚀 Модерация запущена:', meetingId)}
+                  onLeave={() => {
+                    websocketService.disconnectLive();  // 🆕
+                    console.log('Модерация остановлена');
+                  }}
+                  enableModeration={true}  // 🆕 КЛЮЧЕВАЯ ФИЧА!
+                />
                 </div>
 
                 <p className="text-xs md:text-sm text-gray-500 mb-6 md:mb-8 px-2">
