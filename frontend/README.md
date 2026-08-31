@@ -1,11 +1,12 @@
+# Timeflow — AI Meeting Assistant
 
-  # Minimalist Dashboard Design
+**Status: accelerator prototype**
 
-  This is a code bundle for Minimalist Dashboard Design. The original project is available at https://www.figma.com/design/ePbbwVWCgrqipRw1OfI0Ny/Minimalist-Dashboard-Design.
+React/Vite-интерфейс ИИ-сервиса для анализа онлайн-встреч.
 
-  ## Running the code
+## Локальный запуск
 
-  Run `npm i` to install the dependencies.
-
-  Run `npm run dev` to start the development server.
-  
+```bash
+pnpm install
+pnpm dev
+```
